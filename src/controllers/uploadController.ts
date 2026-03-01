@@ -20,7 +20,7 @@ import path from "path";
  *   and to avoid path traversal attacks from user-supplied filenames
  */
 
-const BUCKET      = "images-bucket";
+const BUCKET      = "image-bucket";
 const FOLDER      = "products";
 const ALLOWED_EXT = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
