@@ -5,6 +5,7 @@ import helmet from "helmet";
 
 import productRoutes from "./routes/productRoutes";
 import categoryRoutes from "./routes/categoryRoutes";
+import uploadRoutes from "./routes/uploadRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 const app = express();
@@ -35,21 +36,27 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173")
   .split(",")
   .map((o) => o.trim());
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl in dev)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      callback(new Error(`CORS policy: origin ${origin} is not allowed`));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (e.g. curl, mobile apps, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS policy: origin ${origin} is not allowed`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(cors(corsOptions));
+
+/**
+ * Explicitly handle OPTIONS preflight requests for ALL routes.
+ * Without this, Express does not respond to browser preflight checks,
+ * causing redirects or silence — both of which browsers reject as a CORS failure.
+ * Must be registered AFTER the cors() middleware above.
+ */
+app.options("*", cors(corsOptions));
 
 // ─────────────────────────────────────────────
 // Body Parsing
@@ -74,6 +81,7 @@ app.get("/health", (_req, res) => {
 // ─────────────────────────────────────────────
 app.use("/api", productRoutes);
 app.use("/api", categoryRoutes);
+app.use("/api", uploadRoutes);
 
 // ─────────────────────────────────────────────
 // Error Handling (must be last)
