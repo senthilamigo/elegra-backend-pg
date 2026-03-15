@@ -142,9 +142,10 @@ export const deleteCategory = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    // categories.id is bigint — coerce route param to integer
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
-      throw new AppError("Invalid category id", 400);
+      throw new AppError("Invalid category id — must be a positive integer", 400);
     }
 
     // Verify the category exists

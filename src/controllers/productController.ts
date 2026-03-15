@@ -171,9 +171,11 @@ export const deleteProduct = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) {
-      throw new AppError("Invalid product id", 400);
+    // products.id is uuid — validate format, do not coerce to number
+    const id = req.params.id;
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || !UUID_RE.test(id)) {
+      throw new AppError("Invalid product id — must be a valid UUID", 400);
     }
 
     // Verify product exists
