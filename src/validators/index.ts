@@ -4,6 +4,10 @@ import { z } from "zod";
 // Shared / reusable schemas
 // ─────────────────────────────────────────────
 
+// UUID schema — used for products.id and product_variants.id
+const uuidSchema = z.string().uuid("Must be a valid UUID");
+
+// Numeric (bigint) ID schema — still used for categories and seller_id
 const bigintIdSchema = z.coerce.number().int().positive();
 
 // ─────────────────────────────────────────────
@@ -20,7 +24,6 @@ const variantBaseSchema = z.object({
   is_active: z.boolean().default(true),
   image_url_primary: z.string().url().optional().nullable(),
   images_urls: z.array(z.string().url()).optional().nullable(),
-  // status options: draft | active | archived
   status: z.enum(["draft", "active", "archived"]).default("active"),
   stock: z.number().int().min(0).default(0),
   discount_type: z.enum(["percentage", "fixed"]).optional().nullable(),
@@ -30,7 +33,7 @@ const variantBaseSchema = z.object({
 export const createVariantSchema = variantBaseSchema;
 
 export const updateVariantSchema = variantBaseSchema.partial().extend({
-  id: bigintIdSchema.optional(), // present when updating an existing variant
+  id: uuidSchema.optional(), // uuid — present when updating an existing variant
 });
 
 // ─────────────────────────────────────────────
@@ -40,11 +43,11 @@ export const updateVariantSchema = variantBaseSchema.partial().extend({
 const productBaseSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(5000).optional().default(""),
-  category_id: bigintIdSchema,
+  category_id: bigintIdSchema,  // categories.id is still bigint
   gender: z.enum(["male", "female", "unisex", "kids", "other"]).default("unisex"),
   is_active: z.boolean().default(true),
   product_code: z.string().min(1).max(100),
-  seller_id: bigintIdSchema,
+  seller_id: bigintIdSchema,    // seller_id is still numeric
 });
 
 export const createProductSchema = productBaseSchema.extend({
@@ -52,7 +55,7 @@ export const createProductSchema = productBaseSchema.extend({
 });
 
 export const updateProductSchema = productBaseSchema.partial().extend({
-  id: bigintIdSchema,
+  id: uuidSchema,               // products.id is now uuid
   variants: z.array(updateVariantSchema).optional(),
 });
 
@@ -69,7 +72,7 @@ const categoryBaseSchema = z.object({
 export const createCategorySchema = categoryBaseSchema;
 
 export const updateCategorySchema = categoryBaseSchema.partial().extend({
-  id: bigintIdSchema,
+  id: bigintIdSchema,           // categories.id is still bigint
 });
 
 // ─────────────────────────────────────────────
@@ -78,7 +81,6 @@ export const updateCategorySchema = categoryBaseSchema.partial().extend({
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  // Fixed at 20 per requirements; included for transparency
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 

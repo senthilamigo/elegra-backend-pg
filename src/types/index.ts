@@ -1,6 +1,8 @@
 // ─────────────────────────────────────────────
 // Database Row Types (mirror PostgreSQL schema)
 // ─────────────────────────────────────────────
+// NOTE: products.id and product_variants.id were changed from bigint → uuid.
+// All other FK/ID columns in the categories table remain bigint.
 
 export interface Category {
   id: bigint;
@@ -11,7 +13,7 @@ export interface Category {
 }
 
 export interface Product {
-  id: bigint;
+  id: string;           // uuid — changed from bigint
   created_at: string;
   seller_id: bigint;
   name: string;
@@ -23,9 +25,9 @@ export interface Product {
 }
 
 export interface ProductVariant {
-  id: bigint;
+  id: string;           // uuid — changed from bigint
   created_at: string;
-  product_id: bigint;
+  product_id: string;   // uuid FK → products.id — changed from bigint
   sku: string;
   color: string | null;
   size: string | null;
