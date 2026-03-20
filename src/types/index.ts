@@ -75,7 +75,7 @@ declare global {
   namespace Express {
     interface Request {
       user?:     User;
-      userRole?: import("./index").UserRole;
+      userRole?: UserRole;   // defined below in this file — no self-import needed
     }
   }
 }
