@@ -8,6 +8,7 @@ import categoryRoutes from "./routes/categoryRoutes";
 import uploadRoutes   from "./routes/uploadRoutes";
 import authRoutes     from "./routes/authRoutes";
 import usersRoutes    from "./routes/usersRoutes";
+import addressRoutes  from "./routes/addressRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 const app = express();
@@ -86,6 +87,7 @@ app.use("/api", categoryRoutes);
 app.use("/api", uploadRoutes);
 app.use("/api", authRoutes);
 app.use("/api", usersRoutes);
+app.use("/api", addressRoutes);
 
 // ─────────────────────────────────────────────
 // Error Handling (must be last)
