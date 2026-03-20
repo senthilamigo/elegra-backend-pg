@@ -67,13 +67,18 @@ async function wouldCreateCycle(categoryId: number, proposedParentId: number): P
   while (currentId !== null) {
     if (currentId === categoryId) return true;
 
-    const { data } = await supabaseAdmin
+    const { data: row } = await supabaseAdmin
       .from("category")
       .select("parent_category_id")
       .eq("id", currentId)
       .single<{ parent_category_id: number | null }>();
 
-    currentId = data?.parent_category_id ? Number(data.parent_category_id) : null;
+    // Explicitly typed assignment — no implicit-any chain back to currentId
+    const parentId: number | null = row?.parent_category_id
+      ? Number(row.parent_category_id)
+      : null;
+
+    currentId = parentId;
   }
 
   return false;
@@ -191,7 +196,7 @@ export const createCategory = async (
         .from("category")
         .select("id")
         .eq("id", input.parent_category_id)
-        .single();
+        .single<{ id: number }>();
 
       if (!parent) {
         throw new AppError(
@@ -244,7 +249,7 @@ export const updateCategory = async (
       .from("category")
       .select("id, parent_category_id")
       .eq("id", id)
-      .single();
+      .single<{ id: number; parent_category_id: number | null }>();
 
     if (!existing) throw new AppError(`Category with id ${id} not found`, 404);
 
@@ -259,7 +264,7 @@ export const updateCategory = async (
         .from("category")
         .select("id")
         .eq("id", input.parent_category_id)
-        .single();
+        .single<{ id: number }>();
 
       if (!parent) {
         throw new AppError(
@@ -316,7 +321,7 @@ export const toggleCategoryStatus = async (
       .from("category")
       .select("id, is_active")
       .eq("id", id)
-      .single();
+      .single<{ id: number; is_active: boolean }>();
 
     if (fetchError || !existing) {
       throw new AppError(`Category with id ${id} not found`, 404);
@@ -362,7 +367,7 @@ export const deleteCategory = async (
       .from("category")
       .select("id")
       .eq("id", id)
-      .single();
+      .single<{ id: number }>();
 
     if (!existing) throw new AppError(`Category with id ${id} not found`, 404);
 
