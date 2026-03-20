@@ -10,7 +10,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   updateMeSchema,
-} from "../validators/auth";
+} from "../validators/authValidators";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helper
@@ -47,7 +47,7 @@ const USER_ROLE_SELECT = "id, first_name, last_name, role_name, created_at";
 // ─────────────────────────────────────────────────────────────────────────────
 export const register = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -116,7 +116,7 @@ export const register = async (
 // ─────────────────────────────────────────────────────────────────────────────
 export const login = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -163,7 +163,7 @@ export const login = async (
 // ─────────────────────────────────────────────────────────────────────────────
 export const logout = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -186,7 +186,7 @@ export const logout = async (
 // ─────────────────────────────────────────────────────────────────────────────
 export const refreshToken = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -221,7 +221,7 @@ export const refreshToken = async (
 // ─────────────────────────────────────────────────────────────────────────────
 export const forgotPassword = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -247,7 +247,7 @@ export const forgotPassword = async (
 // ─────────────────────────────────────────────────────────────────────────────
 export const resetPassword = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -318,7 +318,7 @@ export const getMe = async (
 // ─────────────────────────────────────────────────────────────────────────────
 export const updateMe = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {

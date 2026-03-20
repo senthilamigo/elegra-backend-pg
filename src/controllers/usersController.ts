@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { AppError } from "../middleware/errorHandler";
 import { ApiResponse, UserRole } from "../types";
-import { updateRoleSchema } from "../validators/auth";
+import { updateRoleSchema } from "../validators/authValidators";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -21,7 +21,7 @@ function validateUuid(id: string, label = "id"): void {
 // ─────────────────────────────────────────────────────────────────────────────
 export const listUsers = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -73,7 +73,7 @@ export const listUsers = async (
 // ─────────────────────────────────────────────────────────────────────────────
 export const getUserById = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -113,7 +113,7 @@ export const getUserById = async (
 // ─────────────────────────────────────────────────────────────────────────────
 export const updateUserRole = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -167,7 +167,7 @@ export const updateUserRole = async (
 // ─────────────────────────────────────────────────────────────────────────────
 export const deleteUser = async (
   req: Request,
-  res: Response<ApiResponse>,
+  res: Response<ApiResponse<unknown>>,
   next: NextFunction
 ): Promise<void> => {
   try {
