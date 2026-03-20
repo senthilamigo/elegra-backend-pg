@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { AppError } from "../middleware/errorHandler";
 import { ApiResponse, UserRole } from "../types";
-import { updateRoleSchema } from "../validators/authValidators";
+import { updateRoleSchema } from "../validators/auth";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

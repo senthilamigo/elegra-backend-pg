@@ -74,7 +74,27 @@ import { User } from "@supabase/supabase-js";
 declare global {
   namespace Express {
     interface Request {
-      user?: User;
+      user?:     User;
+      userRole?: import("./index").UserRole;
     }
   }
+}
+
+// ─────────────────────────────────────────────
+// user_role table
+//   id         UUID PRIMARY KEY (FK → auth.users.id)
+//   first_name text             NOT NULL
+//   last_name  text             NULL
+//   role_name  text             NOT NULL  ('customer' | 'seller' | 'admin')
+//   created_at TIMESTAMP
+// ─────────────────────────────────────────────
+
+export type RoleName = "customer" | "seller" | "admin";
+
+export interface UserRole {
+  id:         string;        // uuid — FK → auth.users.id
+  first_name: string;        // NOT NULL
+  last_name:  string | null; // NULL allowed
+  role_name:  RoleName;      // NOT NULL
+  created_at: string;
 }
