@@ -67,18 +67,19 @@ async function wouldCreateCycle(categoryId: number, proposedParentId: number): P
   while (currentId !== null) {
     if (currentId === categoryId) return true;
 
-    const { data: row } = await supabaseAdmin
-      .from("category")
-      .select("parent_category_id")
-      .eq("id", currentId)
-      .single<{ parent_category_id: number | null }>();
+    // Assign the full result to a typed variable — do NOT destructure here.
+    // Destructuring inside a while loop creates a circular inference chain
+    // that TypeScript cannot resolve with strict:true, causing TS7022 even
+    // when the generic is explicitly specified.
+    const result: { data: { parent_category_id: number | null } | null; error: unknown } =
+      await supabaseAdmin
+        .from("category")
+        .select("parent_category_id")
+        .eq("id", currentId)
+        .single<{ parent_category_id: number | null }>();
 
-    // Explicitly typed assignment — no implicit-any chain back to currentId
-    const parentId: number | null = row?.parent_category_id
-      ? Number(row.parent_category_id)
-      : null;
-
-    currentId = parentId;
+    const nextParentId: number | null = result.data?.parent_category_id ?? null;
+    currentId = nextParentId ? Number(nextParentId) : null;
   }
 
   return false;
