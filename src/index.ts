@@ -3,9 +3,11 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 
-import productRoutes from "./routes/productRoutes";
+import productRoutes  from "./routes/productRoutes";
 import categoryRoutes from "./routes/categoryRoutes";
-import uploadRoutes from "./routes/uploadRoutes";
+import uploadRoutes   from "./routes/uploadRoutes";
+import authRoutes     from "./routes/authRoutes";
+import usersRoutes    from "./routes/usersRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 const app = express();
@@ -82,6 +84,8 @@ app.get("/health", (_req, res) => {
 app.use("/api", productRoutes);
 app.use("/api", categoryRoutes);
 app.use("/api", uploadRoutes);
+app.use("/api", authRoutes);
+app.use("/api", usersRoutes);
 
 // ─────────────────────────────────────────────
 // Error Handling (must be last)
