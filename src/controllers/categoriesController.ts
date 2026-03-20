@@ -71,7 +71,7 @@ async function wouldCreateCycle(categoryId: number, proposedParentId: number): P
       .from("category")
       .select("parent_category_id")
       .eq("id", currentId)
-      .single();
+      .single<{ parent_category_id: number | null }>();
 
     currentId = data?.parent_category_id ? Number(data.parent_category_id) : null;
   }
