@@ -36,14 +36,12 @@ const USER_ROLE_SELECT = "id, first_name, last_name, role_name, created_at";
 // POST /api/auth/register   — public
 //
 // Flow:
-//   1. Validate input (first_name required, last_name optional)
-//   2. Create Supabase auth account via supabase.auth.signUp()
-//      (respects the project's email-confirmation setting)
-//   3. Insert a row into user_role with role_name = 'admin'
-//      (uses admin client so RLS is bypassed for the insert)
-//   4. If the user_role insert fails, delete the auth account (rollback)
-//   5. Return tokens + profile if email confirmation is disabled;
-//      return a "check your inbox" message if confirmation is required
+//   1. Validate input — role_name ('admin'|'seller'), seller_profile required if seller
+//   2. Create Supabase auth account
+//   3. Insert user_role row with the chosen role
+//   4. If role is 'seller', insert sellers row (status: pending, is_verified: false)
+//   5. Rollback auth account if any DB insert fails
+//   6. Return tokens + profile if email confirmation disabled; inbox message if required
 // ─────────────────────────────────────────────────────────────────────────────
 export const register = async (
   req: Request,
@@ -65,24 +63,49 @@ export const register = async (
 
     const userId = authData.user.id;
 
-    // Step 2 — Insert user_role row
-    // last_name is optional in the request; store null when not supplied
+    // Step 2 — Insert user_role row with the chosen role
     const { error: roleError } = await supabaseAdmin
       .from("user_role")
       .insert({
         id:         userId,
-        first_name: body.first_name,           // trim applied by Zod schema
-        last_name:  body.last_name ?? null,    // NULL when omitted
-        role_name:  "admin",
+        first_name: body.first_name,
+        last_name:  body.last_name ?? null,
+        role_name:  body.role_name,
       });
 
     if (roleError) {
-      // Rollback — remove the orphaned auth account
       await supabaseAdmin.auth.admin.deleteUser(userId);
       throw new AppError(
         `Account created but profile setup failed: ${roleError.message}`,
         500
       );
+    }
+
+    // Step 3 — If seller, insert sellers row
+    if (body.role_name === "seller" && body.seller_profile) {
+      const sp = body.seller_profile;
+      const { error: sellerError } = await supabaseAdmin
+        .from("sellers")
+        .insert({
+          user_id:       userId,
+          business_name: sp.business_name,
+          contact_name:  sp.contact_name,
+          email:         body.email,          // default to auth email
+          phone:         sp.phone,
+          description:   sp.description ?? null,
+          is_verified:   false,
+          status:        "pending",
+        });
+
+      if (sellerError) {
+        // Rollback both auth account and user_role row
+        await supabaseAdmin.from("user_role").delete().eq("id", userId);
+        await supabaseAdmin.auth.admin.deleteUser(userId);
+        throw new AppError(
+          `Account created but seller profile setup failed: ${sellerError.message}`,
+          500
+        );
+      }
     }
 
     const requiresConfirmation = !authData.session?.access_token;
@@ -98,7 +121,7 @@ export const register = async (
           email:      authData.user.email,
           first_name: body.first_name,
           last_name:  body.last_name ?? null,
-          role_name:  "admin",
+          role_name:  body.role_name,
         },
         ...(authData.session && {
           access_token:  authData.session.access_token,
