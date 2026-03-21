@@ -15,7 +15,7 @@ export interface Category {
 export interface Product {
   id: string;           // uuid — changed from bigint
   created_at: string;
-  seller_id: bigint;
+  seller_id: string;        // uuid — changed from bigint
   name: string;
   description: string;
   category_id: bigint;
