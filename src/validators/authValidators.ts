@@ -9,25 +9,43 @@ const passwordSchema = z.string().min(8, "Password must be at least 8 characters
 
 // ─────────────────────────────────────────────
 // Auth endpoint schemas
-// Table: user_role
-//   id         UUID PRIMARY KEY
-//   first_name text            NOT NULL
-//   last_name  text            NULL
-//   role_name  text            NOT NULL
-//   created_at TIMESTAMP
 // ─────────────────────────────────────────────
 
 /**
  * POST /api/auth/register
- * first_name is required (NOT NULL in DB).
- * last_name  is optional — DB column allows NULL.
+ * role_name is required — 'admin' or 'seller'.
+ * When role_name is 'seller', seller_profile fields become required.
  */
-export const registerSchema = z.object({
-  email:      emailSchema,
-  password:   passwordSchema,
-  first_name: z.string().min(1, "First name is required").max(100).trim(),
-  last_name:  z.string().max(100).trim().optional(),
-});
+export const registerSchema = z
+  .object({
+    // User identity
+    email:      emailSchema,
+    password:   passwordSchema,
+    first_name: z.string().min(1, "First name is required").max(100).trim(),
+    last_name:  z.string().max(100).trim().optional(),
+
+    // Role selection — only 'admin' or 'seller' at registration
+    role_name: z.enum(["admin", "seller"], {
+      errorMap: () => ({ message: "role_name must be 'admin' or 'seller'" }),
+    }),
+
+    // Seller profile — required when role_name is 'seller'
+    seller_profile: z
+      .object({
+        business_name: z.string().min(1, "Business name is required").max(255),
+        contact_name:  z.string().min(1, "Contact name is required").max(255),
+        phone:         z.string().min(1, "Phone is required").max(20),
+        description:   z.string().max(5000).optional().nullable(),
+      })
+      .optional(),
+  })
+  .refine(
+    (d) => !(d.role_name === "seller" && !d.seller_profile),
+    {
+      message: "seller_profile is required when role_name is 'seller'",
+      path:    ["seller_profile"],
+    }
+  );
 
 /** POST /api/auth/login */
 export const loginSchema = z.object({
@@ -35,7 +53,7 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-/** POST /api/auth/refresh-token — body carries the refresh token */
+/** POST /api/auth/refresh-token */
 export const refreshTokenSchema = z.object({
   refresh_token: z.string().min(1, "refresh_token is required"),
 });
@@ -53,10 +71,9 @@ export const resetPasswordSchema = z.object({
 
 /**
  * PATCH /api/auth/me
- * - first_name: optional update; cannot be set to empty string
- * - last_name:  optional update; can be set to "" to clear it (stored as NULL)
- * - Changing password requires current_password for verification
- * - At least one field must be supplied
+ * first_name — cannot be empty if supplied
+ * last_name  — nullable (clears to NULL when empty string sent)
+ * Changing password requires current_password
  */
 export const updateMeSchema = z
   .object({
@@ -74,14 +91,7 @@ export const updateMeSchema = z
     { message: "current_password is required when setting a new_password", path: ["current_password"] }
   );
 
-// ─────────────────────────────────────────────
-// User-admin endpoint schemas
-// ─────────────────────────────────────────────
-
-/**
- * PATCH /api/users/:id/role
- * role_name must be one of the three valid roles.
- */
+/** PATCH /api/users/:id/role */
 export const updateRoleSchema = z.object({
   role_name: z.enum(["customer", "seller", "admin"], {
     errorMap: () => ({ message: "role_name must be one of: customer, seller, admin" }),
@@ -89,9 +99,8 @@ export const updateRoleSchema = z.object({
 });
 
 // ─────────────────────────────────────────────
-// Inferred TypeScript types
+// Inferred types
 // ─────────────────────────────────────────────
-
 export type RegisterInput       = z.infer<typeof registerSchema>;
 export type LoginInput          = z.infer<typeof loginSchema>;
 export type RefreshTokenInput   = z.infer<typeof refreshTokenSchema>;
