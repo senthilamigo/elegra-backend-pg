@@ -7,7 +7,7 @@ import { z } from "zod";
 // UUID schema — used for products.id and product_variants.id
 const uuidSchema = z.string().uuid("Must be a valid UUID");
 
-// Numeric (bigint) ID schema — still used for categories and seller_id
+// Numeric (bigint) ID schema — used for categories
 const bigintIdSchema = z.coerce.number().int().positive();
 
 // ─────────────────────────────────────────────
@@ -47,7 +47,7 @@ const productBaseSchema = z.object({
   gender: z.enum(["male", "female", "unisex", "kids", "other"]).default("unisex"),
   is_active: z.boolean().default(true),
   product_code: z.string().min(1).max(100),
-  seller_id: bigintIdSchema,    // seller_id is still numeric
+  seller_id: uuidSchema,        // uuid — changed from bigint
 });
 
 export const createProductSchema = productBaseSchema.extend({
