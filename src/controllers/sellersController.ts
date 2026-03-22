@@ -1,3 +1,11 @@
+/**
+ * File: src/controllers/sellersController.ts
+ * Path: ecommerce-admin/src/controllers/sellersController.ts
+ *
+ * CRUD handlers for the sellers table.
+ * Endpoints: list, getById, getMyProfile, create, update,
+ *            updateStatus, verify, delete.
+ */
 import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { AppError }      from "../middleware/errorHandler";
@@ -58,7 +66,8 @@ export const listSellers = async (
   try {
     const page   = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10) || 1);
     const limit  = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10) || 20));
-    const status = req.query.status as string | undefined;
+    const status = req.query.status  as string | undefined;
+    const userId = req.query.user_id as string | undefined;
     const from   = (page - 1) * limit;
     const to     = from + limit - 1;
 
@@ -73,6 +82,11 @@ export const listSellers = async (
         throw new AppError("Query param 'status' must be 'active', 'suspended', or 'pending'", 400);
       }
       query = query.eq("status", status);
+    }
+
+    // Allow admin UI to fetch the seller profile for a specific user
+    if (userId) {
+      query = query.eq("user_id", userId);
     }
 
     const { data, error, count } = await query;

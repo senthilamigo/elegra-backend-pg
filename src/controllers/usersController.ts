@@ -227,3 +227,57 @@ export const deleteUser = async (
     next(err);
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/users/:id/status   — admin
+//
+// Updates the status column in user_role.
+// Valid values: 'active' | 'pending' | 'suspended'
+// An admin cannot suspend their own account.
+// ─────────────────────────────────────────────────────────────────────────────
+export const updateUserStatus = async (
+  req:  Request,
+  res:  Response<ApiResponse<unknown>>,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    validateUuid(id, "user id");
+
+    const { status } = req.body as { status?: string };
+    if (!status || !["active", "pending", "suspended"].includes(status)) {
+      throw new AppError("status must be 'active', 'pending', or 'suspended'", 400);
+    }
+
+    // Prevent an admin from suspending their own account
+    if (id === req.user?.id && status === "suspended") {
+      throw new AppError("You cannot suspend your own account.", 403);
+    }
+
+    // Confirm user exists
+    const { data: existing } = await supabaseAdmin
+      .from("user_role")
+      .select("id")
+      .eq("id", id)
+      .single<{ id: string }>();
+
+    if (!existing) throw new AppError(`User with id ${id} not found`, 404);
+
+    const { data: updated, error } = await supabaseAdmin
+      .from("user_role")
+      .update({ status })
+      .eq("id", id)
+      .select("id, first_name, last_name, role_name, status, created_at")
+      .single();
+
+    if (error) throw new AppError(`Failed to update status: ${error.message}`, 500);
+
+    res.status(200).json({
+      success: true,
+      message: `User status updated to '${status}'.`,
+      data:    updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
