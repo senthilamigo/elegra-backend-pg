@@ -10,6 +10,7 @@ import uploadRoutes   from "./routes/uploadRoutes";
 import authRoutes     from "./routes/authRoutes";
 import usersRoutes    from "./routes/usersRoutes";
 import addressRoutes  from "./routes/addressRoutes";
+import sellersRoutes  from "./routes/sellersRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 const app = express();
@@ -48,7 +49,7 @@ const corsOptions = {
     callback(new Error(`CORS policy: origin ${origin} is not allowed`));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
@@ -83,13 +84,20 @@ app.get("/health", (_req, res) => {
 // ─────────────────────────────────────────────
 // API Routes
 // ─────────────────────────────────────────────
-app.use("/api", productRoutes);
-app.use("/api", categoryRoutes);
-app.use("/api", categoriesRoutes);
-app.use("/api", uploadRoutes);
-app.use("/api", authRoutes);
-app.use("/api", usersRoutes);
-app.use("/api", addressRoutes);
+// IMPORTANT: public routes must be registered BEFORE any router that uses
+// a blanket router.use(requireAuth) with no path prefix (productRoutes,
+// categoryRoutes, uploadRoutes). Express passes a request through every
+// router mounted at a matching prefix in registration order. If a router
+// with blanket requireAuth is reached first, it runs requireAuth even if
+// that router has no matching route — causing 401 on public endpoints.
+app.use("/api", authRoutes);        // public: /auth/register, /auth/login, etc.
+app.use("/api", categoriesRoutes);  // public GETs + admin writes (per-route guards)
+app.use("/api", productRoutes);     // blanket requireAuth inside — must come after public routes
+app.use("/api", categoryRoutes);    // blanket requireAuth inside
+app.use("/api", uploadRoutes);      // blanket requireAuth inside
+app.use("/api", usersRoutes);       // blanket requireAuth + requireRole("admin") inside
+app.use("/api", addressRoutes);     // blanket requireAuth inside
+app.use("/api", sellersRoutes);     // per-route requireAuth + requireRole inside
 
 // ─────────────────────────────────────────────
 // Error Handling (must be last)
