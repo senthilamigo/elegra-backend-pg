@@ -15,6 +15,10 @@
  * When creating a shipment (POST /api/shipments), the controller accepts
  * order_id in the request body and updates orders.shipment_id after insert.
  * order_id is NOT a column on the shipment table itself.
+ *
+ * NOTE: The SHIPMENT_SELECT query also fetches order_id via a reverse lookup
+ * so the fetchShipment helper can enforce ownership. This is a runtime
+ * join result field, not a physical column on the shipment table.
  */
 
 export interface Shipment {
@@ -24,9 +28,12 @@ export interface Shipment {
 }
 
 /**
- * Shipment enriched with joined address details for client display.
+ * Shipment enriched with joined address details and the resolved order_id.
+ * order_id comes from the SHIPMENT_SELECT join context (not a DB column on shipment)
+ * and is used for ownership checks.
  */
 export interface ShipmentWithAddress extends Shipment {
+  order_id: string | null;  // resolved via orders.shipment_id join — used for ownership checks
   address: {
     id:             string;
     street_address: string;

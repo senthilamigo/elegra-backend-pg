@@ -217,23 +217,27 @@ export const placeOrder = async (
       throw new AppError("Your cart is empty", 400);
 
     // Resolve unit price for each product (cheapest active variant)
+    // Supabase FK joins return related rows as an array even for one-to-one
+    // relationships. We type products as an array here and pick index [0].
     type CartRow = {
-      id: string;
+      id:         string;
       product_id: string;
-      quantity: number;
+      quantity:   number;
       products: {
-        id: string;
-        name: string;
-        is_active: boolean;
+        id:               string;
+        name:             string;
+        is_active:        boolean;
         product_variants: { base_price: number; is_active: boolean; status: string }[];
-      } | null;
+      }[] | null;
     };
 
     const lineItems: { product_id: string; quantity: number; unit_price: number }[] = [];
     let totalAmount = 0;
 
-    for (const item of cartItems as CartRow[]) {
-      const product = item.products;
+    for (const item of (cartItems as unknown) as CartRow[]) {
+      // Supabase returns a single-element array for to-one FK joins
+      const productArr = Array.isArray(item.products) ? item.products : item.products ? [item.products] : [];
+      const product = productArr[0] ?? null;
       if (!product || !product.is_active)
         throw new AppError(`Product ${item.product_id} is no longer available`, 400);
 
