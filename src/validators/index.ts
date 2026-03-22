@@ -1,115 +1,101 @@
-import "dotenv/config";
-import express from "express";
-import cors from "cors";
-import helmet from "helmet";
-
-import productRoutes  from "./routes/productRoutes";
-import categoryRoutes from "./routes/categoryRoutes";
-import categoriesRoutes from "./routes/categoriesRoutes";
-import uploadRoutes   from "./routes/uploadRoutes";
-import authRoutes     from "./routes/authRoutes";
-import usersRoutes    from "./routes/usersRoutes";
-import addressRoutes  from "./routes/addressRoutes";
-import sellersRoutes  from "./routes/sellersRoutes";
-import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
-
-const app = express();
-const PORT = process.env.PORT ?? 3000;
-
-// ─────────────────────────────────────────────
-// Security Middleware
-// ─────────────────────────────────────────────
-
 /**
- * Helmet sets security-related HTTP headers:
- * - X-Content-Type-Options: nosniff
- * - X-Frame-Options: DENY
- * - Strict-Transport-Security (HSTS) in production
- * - Content-Security-Policy defaults
- */
-app.use(helmet());
-
-/**
- * CORS Configuration
+ * File: src/validators/index.ts
+ * Path: ecommerce-admin/src/validators/index.ts
  *
- * Security considerations:
- * - Only whitelisted origins are allowed (set ALLOWED_ORIGINS env var)
- * - Credentials (cookies) are allowed so frontend can use httpOnly cookies for tokens
- * - Avoid using origin: '*' in production as it defeats CORS protections
+ * Zod validation schemas for all API request bodies.
  */
-const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173")
-  .split(",")
-  .map((o) => o.trim());
-
-const corsOptions = {
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests with no origin (e.g. curl, mobile apps, server-to-server)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS policy: origin ${origin} is not allowed`));
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
-
-app.use(cors(corsOptions));
-
-/**
- * Explicitly handle OPTIONS preflight requests for ALL routes.
- * Without this, Express does not respond to browser preflight checks,
- * causing redirects or silence — both of which browsers reject as a CORS failure.
- * Must be registered AFTER the cors() middleware above.
- */
-app.options("*", cors(corsOptions));
+import { z } from "zod";
 
 // ─────────────────────────────────────────────
-// Body Parsing
+// Shared / reusable schemas
 // ─────────────────────────────────────────────
 
-/**
- * Limit request body to 1mb to prevent denial-of-service via large payloads.
- * Adjust if you need to accept base64-encoded images in JSON bodies.
- */
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+// UUID schema — used for products.id and product_variants.id
+const uuidSchema = z.string().uuid("Must be a valid UUID");
+
+// Numeric (bigint) ID schema — used for categories
+const bigintIdSchema = z.coerce.number().int().positive();
 
 // ─────────────────────────────────────────────
-// Health check (no auth required)
+// Product Variant schemas
 // ─────────────────────────────────────────────
-app.get("/health", (_req, res) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+
+const variantBaseSchema = z.object({
+  sku: z.string().max(100).optional().default(""), // optional — no longer required
+  color: z.string().max(50).optional().nullable(),
+  size: z.string().max(50).optional().nullable(),
+  material: z.string().max(100).optional().nullable(),
+  attributes: z.record(z.unknown()).optional().nullable(),
+  base_price: z.number().positive("Price must be positive"),
+  is_active: z.boolean().default(true),
+  image_url_primary: z.string().url().optional().nullable(),
+  images_urls: z.array(z.string().url()).optional().nullable(),
+  status: z.enum(["draft", "active", "archived"]).default("active"),
+  stock: z.number().int().min(0).default(0),
+  discount_type: z.enum(["percentage", "fixed"]).optional().nullable(),
+  discount_value: z.number().min(0).optional().nullable(),
+});
+
+export const createVariantSchema = variantBaseSchema;
+
+export const updateVariantSchema = variantBaseSchema.partial().extend({
+  id: uuidSchema.optional(), // uuid — present when updating an existing variant
 });
 
 // ─────────────────────────────────────────────
-// API Routes
+// Product schemas
 // ─────────────────────────────────────────────
-// IMPORTANT: public routes must be registered BEFORE any router that uses
-// a blanket router.use(requireAuth) with no path prefix (productRoutes,
-// categoryRoutes, uploadRoutes). Express passes a request through every
-// router mounted at a matching prefix in registration order. If a router
-// with blanket requireAuth is reached first, it runs requireAuth even if
-// that router has no matching route — causing 401 on public endpoints.
-app.use("/api", authRoutes);        // public: /auth/register, /auth/login, etc.
-app.use("/api", categoriesRoutes);  // public GETs + admin writes (per-route guards)
-app.use("/api", productRoutes);     // blanket requireAuth inside — must come after public routes
-app.use("/api", categoryRoutes);    // blanket requireAuth inside
-app.use("/api", uploadRoutes);      // blanket requireAuth inside
-app.use("/api", usersRoutes);       // blanket requireAuth + requireRole("admin") inside
-app.use("/api", addressRoutes);     // blanket requireAuth inside
-app.use("/api", sellersRoutes);     // per-route requireAuth + requireRole inside
 
-// ─────────────────────────────────────────────
-// Error Handling (must be last)
-// ─────────────────────────────────────────────
-app.use(notFoundHandler);
-app.use(errorHandler);
-
-// ─────────────────────────────────────────────
-// Start server
-// ─────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT} in ${process.env.NODE_ENV ?? "development"} mode`);
+const productBaseSchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().max(5000).optional().default(""),
+  category_id: bigintIdSchema,  // categories.id is still bigint
+  gender: z.enum(["male", "female", "unisex", "kids", "other"]).default("unisex"),
+  is_active: z.boolean().default(true),
+  product_code: z.string().min(1).max(100),
+  seller_id: uuidSchema,        // uuid — changed from bigint
 });
 
-export default app;
+export const createProductSchema = productBaseSchema.extend({
+  variants: z.array(createVariantSchema).min(1, "At least one variant is required"),
+});
+
+export const updateProductSchema = productBaseSchema.partial().extend({
+  id: uuidSchema,               // products.id is now uuid
+  variants: z.array(updateVariantSchema).optional(),
+});
+
+// ─────────────────────────────────────────────
+// Category schemas
+// ─────────────────────────────────────────────
+
+const categoryBaseSchema = z.object({
+  category_name: z.string().min(1).max(150),
+  parent_category_id: bigintIdSchema.optional().nullable(),
+  is_active: z.boolean().default(true),
+});
+
+export const createCategorySchema = categoryBaseSchema;
+
+export const updateCategorySchema = categoryBaseSchema.partial().extend({
+  id: bigintIdSchema,           // categories.id is still bigint
+});
+
+// ─────────────────────────────────────────────
+// Query param schemas
+// ─────────────────────────────────────────────
+
+export const paginationSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+// ─────────────────────────────────────────────
+// Inferred TypeScript types from schemas
+// ─────────────────────────────────────────────
+
+export type CreateProductInput = z.infer<typeof createProductSchema>;
+export type UpdateProductInput = z.infer<typeof updateProductSchema>;
+export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+export type PaginationInput = z.infer<typeof paginationSchema>;
