@@ -1,3 +1,9 @@
+/**
+ * File: src/validators/index.ts
+ * Path: ecommerce-admin/src/validators/index.ts
+ *
+ * Zod validation schemas for all API request bodies.
+ */
 import { z } from "zod";
 
 // ─────────────────────────────────────────────
@@ -15,7 +21,7 @@ const bigintIdSchema = z.coerce.number().int().positive();
 // ─────────────────────────────────────────────
 
 const variantBaseSchema = z.object({
-  sku: z.string().min(1).max(100),
+  sku: z.string().max(100).optional().default(""), // optional — no longer required
   color: z.string().max(50).optional().nullable(),
   size: z.string().max(50).optional().nullable(),
   material: z.string().max(100).optional().nullable(),
