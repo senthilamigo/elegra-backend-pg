@@ -3,18 +3,27 @@
  * Path: ecommerce-admin/src/controllers/cartController.ts
  *
  * Handlers for cart and wishlist endpoints.
- * All endpoints require authentication — user_id is always taken
- * from req.user.id (the verified JWT), never from the request body.
+ * All endpoints require authentication — user_id is always taken from
+ * req.user.id (the verified JWT), never from the request body.
+ *
+ * Actual table columns
+ * ─────────────────────
+ * cart:
+ *   id, user_id, product_id, quantity, created_at, updated_at
+ *
+ * wishlist:
+ *   id, user_id, product_id, created_at, deleted_at
+ *   (deleted_at IS NULL  → active;  deleted_at IS NOT NULL → soft-deleted)
  *
  * Cart design:
- *   - One row per (user_id, variant_id) — duplicate add increments quantity
+ *   - One row per (user_id, product_id) — duplicate POST increments quantity
+ *   - GET response joins product data for display
  *   - Hard-deletes on item removal and cart clear
- *   - GET response joins variant and product data for richer client display
  *
  * Wishlist design:
- *   - One row per (user_id, product_id) — soft-delete via is_active flag
- *   - Re-adding a soft-deleted item reactivates it (sets is_active = true)
- *   - GET response joins product + primary image for display
+ *   - One row per (user_id, product_id) — soft-delete via deleted_at timestamp
+ *   - Re-adding a soft-deleted entry clears deleted_at (sets back to NULL)
+ *   - GET filters WHERE deleted_at IS NULL
  */
 
 import { Request, Response, NextFunction } from "express";
@@ -40,48 +49,50 @@ function validateUuid(id: string, label = "id"): void {
 }
 
 /**
- * Columns to select from the cart table enriched with variant + product data.
- * The join gives the client everything needed to render a cart line item.
+ * Columns to select from cart joined with the product.
+ * Cart tracks products; the join gives the client name, image, and price
+ * without a separate API call.
  */
 const CART_SELECT = `
   id,
   user_id,
-  variant_id,
+  product_id,
   quantity,
   created_at,
   updated_at,
-  product_variants (
+  products (
     id,
-    sku,
-    color,
-    size,
-    material,
-    base_price,
-    image_url_primary,
-    stock,
-    status,
-    discount_type,
-    discount_value,
+    name,
+    product_code,
+    description,
+    gender,
     is_active,
-    products (
+    seller_id,
+    product_variants (
       id,
-      name,
-      product_code,
-      description,
+      sku,
+      base_price,
+      image_url_primary,
+      color,
+      size,
+      stock,
+      status,
+      discount_type,
+      discount_value,
       is_active
     )
   )
 `.trim();
 
 /**
- * Columns to select from wishlist enriched with product + primary variant image.
+ * Columns to select from wishlist joined with the product.
  */
 const WISHLIST_SELECT = `
   id,
   user_id,
   product_id,
   created_at,
-  is_active,
+  deleted_at,
   products (
     id,
     name,
@@ -90,8 +101,11 @@ const WISHLIST_SELECT = `
     gender,
     is_active,
     product_variants (
-      image_url_primary,
+      id,
       base_price,
+      image_url_primary,
+      color,
+      size,
       is_active
     )
   )
@@ -100,9 +114,9 @@ const WISHLIST_SELECT = `
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/cart   — auth
 //
-// Returns all active cart items for the authenticated user,
-// ordered by creation date (oldest first = natural cart order).
-// Includes variant details and product info for each line item.
+// Returns all cart items for the authenticated user (oldest first).
+// The response includes a computed subtotal using the cheapest active
+// variant's price for each product, applying any discount where set.
 // ─────────────────────────────────────────────────────────────────────────────
 export const getCart = async (
   req:  Request,
@@ -120,17 +134,26 @@ export const getCart = async (
 
     if (error) throw new AppError(`Failed to fetch cart: ${error.message}`, 500);
 
-    // Calculate cart totals for convenience
     const items = data ?? [];
+
+    // Compute subtotal — uses the lowest-priced active variant per product
     const subtotal = items.reduce((sum: number, item: any) => {
-      const variant  = item.product_variants;
-      if (!variant) return sum;
-      const price    = variant.base_price as number;
-      const discount = variant.discount_type && variant.discount_value
-        ? variant.discount_type === "percentage"
-          ? price * (variant.discount_value / 100)
-          : variant.discount_value
+      const variants: any[] = item.products?.product_variants ?? [];
+      const activeVariants  = variants.filter((v) => v.is_active && v.status !== "archived");
+      if (!activeVariants.length) return sum;
+
+      // Pick lowest base price for this product
+      const cheapest = activeVariants.reduce((min: any, v: any) =>
+        v.base_price < min.base_price ? v : min
+      );
+
+      const price    = cheapest.base_price as number;
+      const discount = cheapest.discount_type && cheapest.discount_value != null
+        ? cheapest.discount_type === "percentage"
+          ? price * (cheapest.discount_value / 100)
+          : cheapest.discount_value
         : 0;
+
       return sum + (price - discount) * item.quantity;
     }, 0);
 
@@ -148,10 +171,9 @@ export const getCart = async (
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/cart   — auth
 //
-// Adds a variant to the cart.
-// If the variant already exists in the user's cart the quantity is
-// incremented by the requested amount rather than creating a duplicate row.
-// Validates that the variant is active and has sufficient stock.
+// Adds a product to the cart.
+// If (user_id, product_id) already exists, increments the quantity.
+// Validates that the product exists and is active.
 // ─────────────────────────────────────────────────────────────────────────────
 export const addToCart = async (
   req:  Request,
@@ -162,35 +184,28 @@ export const addToCart = async (
     const userId = req.user!.id;
     const body   = addToCartSchema.parse(req.body);
 
-    // Validate that the variant exists, is active, and has enough stock
-    const { data: variant, error: variantError } = await supabaseAdmin
-      .from("product_variants")
-      .select("id, stock, is_active, status")
-      .eq("id", body.variant_id)
-      .single<{ id: string; stock: number; is_active: boolean; status: string }>();
+    // Validate product exists and is active
+    const { data: product, error: productError } = await supabaseAdmin
+      .from("products")
+      .select("id, is_active, name")
+      .eq("id", body.product_id)
+      .single<{ id: string; is_active: boolean; name: string }>();
 
-    if (variantError || !variant)
-      throw new AppError("Variant not found", 404);
+    if (productError || !product)
+      throw new AppError("Product not found", 404);
 
-    if (!variant.is_active || variant.status === "archived")
-      throw new AppError("This variant is no longer available", 400);
+    if (!product.is_active)
+      throw new AppError("This product is no longer available", 400);
 
-    // Check if the variant is already in the cart
+    // Check for an existing cart row for this (user, product) pair
     const { data: existing } = await supabaseAdmin
       .from("cart")
       .select("id, quantity")
       .eq("user_id", userId)
-      .eq("variant_id", body.variant_id)
+      .eq("product_id", body.product_id)
       .maybeSingle<{ id: string; quantity: number }>();
 
     const newQuantity = (existing?.quantity ?? 0) + body.quantity;
-
-    if (variant.stock > 0 && newQuantity > variant.stock) {
-      throw new AppError(
-        `Only ${variant.stock} unit(s) available. You already have ${existing?.quantity ?? 0} in your cart.`,
-        400
-      );
-    }
 
     let cartItem: any;
 
@@ -206,12 +221,12 @@ export const addToCart = async (
       if (error) throw new AppError(`Failed to update cart: ${error.message}`, 500);
       cartItem = data;
     } else {
-      // Insert a new cart row
+      // Insert a new row
       const { data, error } = await supabaseAdmin
         .from("cart")
         .insert({
           user_id:    userId,
-          variant_id: body.variant_id,
+          product_id: body.product_id,
           quantity:   body.quantity,
         })
         .select(CART_SELECT)
@@ -233,8 +248,7 @@ export const addToCart = async (
 // PUT /api/cart/:id   — auth
 //
 // Updates the quantity of a specific cart item.
-// Only the item owner can update it.
-// Re-validates stock against the new quantity.
+// Ownership is enforced — user can only update their own items.
 // ─────────────────────────────────────────────────────────────────────────────
 export const updateCartItem = async (
   req:  Request,
@@ -248,29 +262,15 @@ export const updateCartItem = async (
     const userId = req.user!.id;
     const body   = updateCartItemSchema.parse(req.body);
 
-    // Fetch the cart item and confirm ownership
+    // Fetch and confirm ownership
     const { data: item, error: fetchError } = await supabaseAdmin
       .from("cart")
-      .select("id, user_id, variant_id, quantity")
+      .select("id, user_id")
       .eq("id", id)
-      .single<{ id: string; user_id: string; variant_id: string; quantity: number }>();
+      .single<{ id: string; user_id: string }>();
 
-    if (fetchError || !item)
-      throw new AppError("Cart item not found", 404);
-
-    if (item.user_id !== userId)
-      throw new AppError("Cart item not found", 404); // 404 not 403 — don't leak existence
-
-    // Validate stock for the new quantity
-    const { data: variant } = await supabaseAdmin
-      .from("product_variants")
-      .select("stock")
-      .eq("id", item.variant_id)
-      .single<{ stock: number }>();
-
-    if (variant && variant.stock > 0 && body.quantity > variant.stock) {
-      throw new AppError(`Only ${variant.stock} unit(s) available`, 400);
-    }
+    if (fetchError || !item || item.user_id !== userId)
+      throw new AppError("Cart item not found", 404); // 404 avoids leaking existence
 
     const { data, error } = await supabaseAdmin
       .from("cart")
@@ -301,7 +301,6 @@ export const removeCartItem = async (
 
     const userId = req.user!.id;
 
-    // Confirm the item exists and belongs to this user
     const { data: item, error: fetchError } = await supabaseAdmin
       .from("cart")
       .select("id, user_id")
@@ -325,7 +324,7 @@ export const removeCartItem = async (
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /api/cart   — auth
 //
-// Hard-deletes ALL cart items for the authenticated user (clear cart).
+// Hard-deletes ALL cart items for the authenticated user.
 // ─────────────────────────────────────────────────────────────────────────────
 export const clearCart = async (
   req:  Request,
@@ -349,8 +348,8 @@ export const clearCart = async (
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/wishlist   — auth
 //
-// Returns all active wishlist items for the authenticated user,
-// with product and first-variant image enrichment.
+// Returns all active (deleted_at IS NULL) wishlist items for the user,
+// enriched with product details, newest first.
 // ─────────────────────────────────────────────────────────────────────────────
 export const getWishlist = async (
   req:  Request,
@@ -364,7 +363,7 @@ export const getWishlist = async (
       .from("wishlist")
       .select(WISHLIST_SELECT)
       .eq("user_id", userId)
-      .eq("is_active", true)
+      .is("deleted_at", null)           // active items only
       .order("created_at", { ascending: false });
 
     if (error) throw new AppError(`Failed to fetch wishlist: ${error.message}`, 500);
@@ -383,8 +382,10 @@ export const getWishlist = async (
 // POST /api/wishlist   — auth
 //
 // Adds a product to the wishlist.
-// Idempotent: if a soft-deleted entry exists it is reactivated;
-// if an active entry already exists a 200 is returned without duplication.
+// Idempotent:
+//   - Already active → return 200 with the existing row (no duplicate)
+//   - Soft-deleted entry exists → clear deleted_at (reactivate), return 200
+//   - No entry → insert new row, return 201
 // Validates that the product exists and is active.
 // ─────────────────────────────────────────────────────────────────────────────
 export const addToWishlist = async (
@@ -409,16 +410,16 @@ export const addToWishlist = async (
     if (!product.is_active)
       throw new AppError("This product is no longer available", 400);
 
-    // Check for an existing wishlist entry (active or soft-deleted)
+    // Check for any existing wishlist entry for (user, product)
     const { data: existing } = await supabaseAdmin
       .from("wishlist")
-      .select("id, is_active")
+      .select("id, deleted_at")
       .eq("user_id", userId)
       .eq("product_id", body.product_id)
-      .maybeSingle<{ id: string; is_active: boolean }>();
+      .maybeSingle<{ id: string; deleted_at: string | null }>();
 
-    if (existing?.is_active) {
-      // Already in the wishlist — return the existing item, no change needed
+    // Case 1 — already active (deleted_at IS NULL)
+    if (existing && existing.deleted_at === null) {
       const { data } = await supabaseAdmin
         .from("wishlist")
         .select(WISHLIST_SELECT)
@@ -432,11 +433,11 @@ export const addToWishlist = async (
       }) as any;
     }
 
-    if (existing && !existing.is_active) {
-      // Reactivate a previously soft-deleted entry
+    // Case 2 — previously soft-deleted; reactivate by clearing deleted_at
+    if (existing && existing.deleted_at !== null) {
       const { data, error } = await supabaseAdmin
         .from("wishlist")
-        .update({ is_active: true })
+        .update({ deleted_at: null })
         .eq("id", existing.id)
         .select(WISHLIST_SELECT)
         .single();
@@ -450,13 +451,13 @@ export const addToWishlist = async (
       }) as any;
     }
 
-    // Insert a fresh wishlist row
+    // Case 3 — no existing entry; insert fresh row
     const { data, error } = await supabaseAdmin
       .from("wishlist")
       .insert({
         user_id:    userId,
         product_id: body.product_id,
-        is_active:  true,
+        // deleted_at omitted — defaults to NULL in DB
       })
       .select(WISHLIST_SELECT)
       .single();
@@ -474,10 +475,9 @@ export const addToWishlist = async (
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /api/wishlist/:id   — auth
 //
-// Soft-deletes a wishlist item by setting is_active = false.
-// Hard deletion is intentionally avoided so wish-list analytics and
-// "save for later" history can be preserved server-side.
+// Soft-deletes by setting deleted_at = NOW().
 // Only the item owner can remove it.
+// Returns 404 if the item is already soft-deleted or doesn't exist.
 // ─────────────────────────────────────────────────────────────────────────────
 export const removeFromWishlist = async (
   req:  Request,
@@ -490,22 +490,21 @@ export const removeFromWishlist = async (
 
     const userId = req.user!.id;
 
-    // Confirm the item exists and belongs to this user
     const { data: item, error: fetchError } = await supabaseAdmin
       .from("wishlist")
-      .select("id, user_id, is_active")
+      .select("id, user_id, deleted_at")
       .eq("id", id)
-      .single<{ id: string; user_id: string; is_active: boolean }>();
+      .single<{ id: string; user_id: string; deleted_at: string | null }>();
 
     if (fetchError || !item || item.user_id !== userId)
       throw new AppError("Wishlist item not found", 404);
 
-    if (!item.is_active)
+    if (item.deleted_at !== null)
       throw new AppError("Wishlist item not found", 404); // already removed
 
     const { error } = await supabaseAdmin
       .from("wishlist")
-      .update({ is_active: false })
+      .update({ deleted_at: new Date().toISOString() })
       .eq("id", id);
 
     if (error) throw new AppError(`Failed to remove from wishlist: ${error.message}`, 500);
