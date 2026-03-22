@@ -1,3 +1,9 @@
+/**
+ * File: src/controllers/usersController.ts
+ * Path: ecommerce-admin/src/controllers/usersController.ts
+ *
+ * Admin-only endpoints for user management: list, get, update role, delete.
+ */
 import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { AppError } from "../middleware/errorHandler";
@@ -32,7 +38,7 @@ export const listUsers = async (
 
     const { data: profiles, error, count } = await supabaseAdmin
       .from("user_role")
-      .select("id, first_name, last_name, role_name, created_at", { count: "exact" })
+      .select("id, first_name, last_name, role_name, status, created_at", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(from, to);
 
@@ -82,7 +88,7 @@ export const getUserById = async (
 
     const { data: profile, error } = await supabaseAdmin
       .from("user_role")
-      .select("id, first_name, last_name, role_name, created_at")
+      .select("id, first_name, last_name, role_name, status, created_at")
       .eq("id", id)
       .single();
 
@@ -142,7 +148,7 @@ export const updateUserRole = async (
       .from("user_role")
       .update({ role_name })
       .eq("id", id)
-      .select("id, first_name, last_name, role_name, created_at")
+      .select("id, first_name, last_name, role_name, status, created_at")
       .single();
 
     if (updateError) {

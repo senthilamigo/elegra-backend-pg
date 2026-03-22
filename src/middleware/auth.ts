@@ -1,3 +1,15 @@
+/**
+ * File: src/middleware/auth.ts
+ * Path: ecommerce-admin/src/middleware/auth.ts
+ *
+ * Authentication and role-based access control middleware.
+ *
+ * Exports:
+ *   requireAuth  — validates Bearer JWT and loads req.user + req.userRole
+ *   requireRole  — factory that enforces a minimum role level
+ *   authenticate — backward-compatible alias for requireAuth
+ */
+
 import { Request, Response, NextFunction } from "express";
 import { supabase, supabaseAdmin }         from "../config/supabase";
 import { ApiResponse, RoleName, UserRole } from "../types";
@@ -10,7 +22,8 @@ import { ApiResponse, RoleName, UserRole } from "../types";
 // row from the `user_role` table and attaches both to the request object:
 //
 //   req.user      — Supabase auth.users record (id, email, …)
-//   req.userRole  — user_role row (id, first_name, last_name, role_name, created_at)
+//   req.userRole  — user_role row (id, first_name, last_name, role_name,
+//                                  status, created_at)
 //
 // Every protected route MUST list requireAuth before its handler.
 // requireRole() depends on req.userRole already being populated.
@@ -32,7 +45,7 @@ export const requireAuth = async (
 
   const token = authHeader.split(" ")[1];
 
-  // Verify token with Supabase — this is a real server-side check,
+  // Verify token with Supabase — real server-side check,
   // not a local JWT decode, so revoked tokens are rejected correctly.
   const { data: authData, error: authError } = await supabase.auth.getUser(token);
 
@@ -44,10 +57,10 @@ export const requireAuth = async (
     return;
   }
 
-  // Load the user_role profile — required for role enforcement downstream.
+  // Load the user_role profile — includes the new `status` column.
   const { data: roleRow, error: roleError } = await supabaseAdmin
     .from("user_role")
-    .select("id, first_name, last_name, role_name, created_at")
+    .select("id, first_name, last_name, role_name, status, created_at")
     .eq("id", authData.user.id)
     .single<UserRole>();
 
@@ -55,6 +68,15 @@ export const requireAuth = async (
     res.status(403).json({
       success: false,
       message: "User profile not found. Your account may not be fully set up.",
+    });
+    return;
+  }
+
+  // Block suspended users from accessing any protected route
+  if (roleRow.status === "suspended") {
+    res.status(403).json({
+      success: false,
+      message: "Your account has been suspended. Please contact support.",
     });
     return;
   }
@@ -76,11 +98,6 @@ export const requireAuth = async (
 //
 // Passing "seller" grants access to users whose role is seller OR admin.
 // Passing "admin"  grants access only to admins.
-//
-// Usage:
-//   router.get("/admin-only", requireAuth, requireRole("admin"),  handler);
-//   router.get("/seller",     requireAuth, requireRole("seller"), handler);
-//   router.get("/any-user",   requireAuth,                        handler);
 // ─────────────────────────────────────────────────────────────────────────────
 export const requireRole = (required: RoleName) => (
   req:  Request,
@@ -93,7 +110,6 @@ export const requireRole = (required: RoleName) => (
   const userLevel     = HIERARCHY.indexOf(userRole as RoleName);
   const requiredLevel = HIERARCHY.indexOf(required);
 
-  // userLevel === -1 means the role string is not in the hierarchy at all
   if (userLevel === -1 || userLevel < requiredLevel) {
     res.status(403).json({
       success: false,

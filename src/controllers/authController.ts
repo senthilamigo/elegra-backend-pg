@@ -1,3 +1,11 @@
+/**
+ * File: src/controllers/authController.ts
+ * Path: ecommerce-admin/src/controllers/authController.ts
+ *
+ * Handles all /api/auth/* endpoints:
+ *   register, login, logout, refreshToken, forgotPassword,
+ *   resetPassword, getMe, updateMe
+ */
 import { Request, Response, NextFunction } from "express";
 import { createClient }    from "@supabase/supabase-js";
 import { supabase, supabaseAdmin } from "../config/supabase";
@@ -30,18 +38,20 @@ function createUserClient(accessToken: string) {
 }
 
 // Columns to select from user_role — mirrors exact table schema
-const USER_ROLE_SELECT = "id, first_name, last_name, role_name, created_at";
+const USER_ROLE_SELECT = "id, first_name, last_name, role_name, status, created_at";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/register   — public
 //
 // Flow:
 //   1. Validate input — role_name ('admin'|'seller'), seller_profile required if seller
-//   2. Create Supabase auth account
-//   3. Insert user_role row with the chosen role
-//   4. If role is 'seller', insert sellers row (status: pending, is_verified: false)
-//   5. Rollback auth account if any DB insert fails
-//   6. Return tokens + profile if email confirmation disabled; inbox message if required
+//   2. Create Supabase auth account (via supabase.auth.signUp)
+//   3. Insert user_role row with status='pending' using the admin client —
+//      this works regardless of whether email confirmation is required because
+//      we use the service-role key, not the user's own token.
+//   4. If role is 'seller', insert sellers row with status='pending' the same way.
+//   5. Rollback auth account if any DB insert fails.
+//   6. Return tokens + profile if email confirmation disabled; inbox message if required.
 // ─────────────────────────────────────────────────────────────────────────────
 export const register = async (
   req: Request,
@@ -63,7 +73,10 @@ export const register = async (
 
     const userId = authData.user.id;
 
-    // Step 2 — Insert user_role row with the chosen role
+    // Step 2 — Insert user_role row with the chosen role.
+    // status is always 'pending' on registration — an admin must activate the account.
+    // Uses supabaseAdmin (service-role key) so this succeeds regardless of whether
+    // the user has confirmed their email yet.
     const { error: roleError } = await supabaseAdmin
       .from("user_role")
       .insert({
@@ -71,6 +84,7 @@ export const register = async (
         first_name: body.first_name,
         last_name:  body.last_name ?? null,
         role_name:  body.role_name,
+        status:     "pending",
       });
 
     if (roleError) {
@@ -81,7 +95,8 @@ export const register = async (
       );
     }
 
-    // Step 3 — If seller, insert sellers row
+    // Step 3 — If seller, insert sellers row with status='pending'.
+    // Uses supabaseAdmin so this works regardless of email confirmation state.
     if (body.role_name === "seller" && body.seller_profile) {
       const sp = body.seller_profile;
       const { error: sellerError } = await supabaseAdmin
@@ -90,7 +105,7 @@ export const register = async (
           user_id:       userId,
           business_name: sp.business_name,
           contact_name:  sp.contact_name,
-          email:         body.email,          // default to auth email
+          email:         body.email,
           phone:         sp.phone,
           description:   sp.description ?? null,
           is_verified:   false,
@@ -122,6 +137,7 @@ export const register = async (
           first_name: body.first_name,
           last_name:  body.last_name ?? null,
           role_name:  body.role_name,
+          status:     "pending",
         },
         ...(authData.session && {
           access_token:  authData.session.access_token,

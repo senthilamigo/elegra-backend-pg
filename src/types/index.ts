@@ -1,46 +1,62 @@
+/**
+ * File: src/types/index.ts
+ * Path: ecommerce-admin/src/types/index.ts
+ *
+ * Central TypeScript type definitions mirroring the PostgreSQL schema.
+ * All interfaces map 1-to-1 with their respective DB table columns.
+ *
+ * Column type mapping:
+ *   PostgreSQL uuid        → string
+ *   PostgreSQL bigint      → bigint  (categories remain bigint)
+ *   PostgreSQL text/varchar → string
+ *   PostgreSQL boolean     → boolean
+ *   PostgreSQL timestamp   → string  (ISO string from Supabase)
+ *   PostgreSQL jsonb       → Record<string, unknown>
+ */
+
 // ─────────────────────────────────────────────
 // Database Row Types (mirror PostgreSQL schema)
 // ─────────────────────────────────────────────
-// NOTE: products.id and product_variants.id were changed from bigint → uuid.
+// NOTE: products.id, product_variants.id and seller_id changed from bigint → uuid.
 // All other FK/ID columns in the categories table remain bigint.
 
 export interface Category {
-  id: bigint;
-  created_at: string;
-  category_name: string;
+  id:                 bigint;
+  created_at:         string;
+  category_name:      string;
   parent_category_id: bigint | null;
-  is_active: boolean;
+  is_active:          boolean;
 }
 
 export interface Product {
-  id: string;           // uuid — changed from bigint
-  created_at: string;
-  seller_id: string;        // uuid — changed from bigint
-  name: string;
-  description: string;
-  category_id: bigint;
-  gender: string;
-  is_active: boolean;
+  id:           string;   // uuid — changed from bigint
+  created_at:   string;
+  seller_id:    string;   // uuid — changed from bigint
+  name:         string;
+  description:  string;
+  category_id:  bigint;
+  gender:       string;
+  is_active:    boolean;
   product_code: string;
 }
 
 export interface ProductVariant {
-  id: string;           // uuid — changed from bigint
-  created_at: string;
-  product_id: string;   // uuid FK → products.id — changed from bigint
-  sku: string;
-  color: string | null;
-  size: string | null;
-  material: string | null;
-  attributes: Record<string, unknown> | null; // jsonb
-  base_price: number;
-  is_active: boolean;
+  id:                string;                   // uuid — changed from bigint
+  created_at:        string;
+  product_id:        string;                   // uuid FK → products.id
+  sku:               string;
+  color:             string | null;
+  size:              string | null;
+  material:          string | null;
+  attributes:        Record<string, unknown> | null; // jsonb
+  base_price:        number;
+  is_active:         boolean;
   image_url_primary: string | null;
-  images_urls: string[] | null;
-  status: string;
-  stock: number;
-  discount_type: string | null;
-  discount_value: number | null;
+  images_urls:       string[] | null;
+  status:            string;
+  stock:             number;
+  discount_type:     string | null;
+  discount_value:    number | null;
 }
 
 // ─────────────────────────────────────────────
@@ -52,18 +68,18 @@ export interface ProductWithVariants extends Product {
 }
 
 export interface PaginatedResponse<T> {
-  data: T[];
-  page: number;
-  limit: number;
-  total: number;
+  data:    T[];
+  page:    number;
+  limit:   number;
+  total:   number;
   hasMore: boolean;
 }
 
 export interface ApiResponse<T = null> {
-  success: boolean;
+  success:  boolean;
   message?: string;
-  data?: T;
-  errors?: unknown;
+  data?:    T;
+  errors?:  unknown;
 }
 
 // ─────────────────────────────────────────────
@@ -75,7 +91,7 @@ declare global {
   namespace Express {
     interface Request {
       user?:     User;
-      userRole?: UserRole;   // defined below in this file — no self-import needed
+      userRole?: UserRole; // defined below — no self-import needed
     }
   }
 }
@@ -86,15 +102,18 @@ declare global {
 //   first_name text             NOT NULL
 //   last_name  text             NULL
 //   role_name  text             NOT NULL  ('customer' | 'seller' | 'admin')
+//   status     varchar(50)      NOT NULL  ('active' | 'suspended' | 'pending')
 //   created_at TIMESTAMP
 // ─────────────────────────────────────────────
 
-export type RoleName = "customer" | "seller" | "admin";
+export type RoleName   = "customer" | "seller" | "admin";
+export type UserStatus = "active" | "suspended" | "pending";
 
 export interface UserRole {
-  id:         string;        // uuid — FK → auth.users.id
-  first_name: string;        // NOT NULL
+  id:         string;       // uuid — FK → auth.users.id
+  first_name: string;       // NOT NULL
   last_name:  string | null; // NULL allowed
-  role_name:  RoleName;      // NOT NULL
+  role_name:  RoleName;     // NOT NULL
+  status:     UserStatus;   // NOT NULL — new column
   created_at: string;
 }
