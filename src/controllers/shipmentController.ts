@@ -87,6 +87,10 @@ async function fetchShipment(
 
   // Ownership check — only applied when a callerId is supplied (non-admin)
   if (callerId) {
+    // If order_id is null the shipment is not linked to any order — deny access
+    if (!data.order_id)
+      throw new AppError(`Shipment with id ${shipmentId} not found`, 404);
+
     const owned = await isOrderOwnedByUser(data.order_id, callerId);
     if (!owned)
       throw new AppError(`Shipment with id ${shipmentId} not found`, 404); // 404 not 403
