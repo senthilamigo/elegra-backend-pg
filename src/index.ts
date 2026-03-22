@@ -18,6 +18,7 @@ import authRoutes     from "./routes/authRoutes";
 import usersRoutes    from "./routes/usersRoutes";
 import addressRoutes  from "./routes/addressRoutes";
 import sellersRoutes  from "./routes/sellersRoutes";
+import cartRoutes     from "./routes/cartRoutes";
 import productsRoutes from "./routes/productsRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
@@ -107,6 +108,7 @@ app.use("/api", uploadRoutes);      // blanket requireAuth inside
 app.use("/api", usersRoutes);       // blanket requireAuth + requireRole("admin") inside
 app.use("/api", addressRoutes);     // blanket requireAuth inside
 app.use("/api", sellersRoutes);     // per-route requireAuth + requireRole inside
+app.use("/api", cartRoutes);         // blanket requireAuth — cart + wishlist
 
 // ─────────────────────────────────────────────
 // Error Handling (must be last)
