@@ -99,3 +99,34 @@ export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 export type PaginationInput = z.infer<typeof paginationSchema>;
+
+// ─────────────────────────────────────────────
+// Variant-specific operation schemas
+// (used by the new /api/products/:id/variants/* endpoints)
+// ─────────────────────────────────────────────
+
+/** POST /api/products/:id/variants */
+export const createVariantBodySchema = variantBaseSchema;
+
+/** PUT /api/products/:id/variants/:vid */
+export const updateVariantBodySchema = variantBaseSchema.partial().refine(
+  (d) => Object.keys(d).length > 0,
+  { message: "At least one field must be provided" }
+);
+
+/** PATCH /api/products/:id/variants/:vid/stock */
+export const updateStockSchema = z.object({
+  stock: z.number().int().min(0, "Stock cannot be negative"),
+});
+
+/** PATCH /api/products/:id/variants/:vid/discount */
+export const updateDiscountSchema = z.object({
+  discount_type:  z.enum(["percentage", "fixed"]).nullable(),
+  discount_value: z.number().min(0).nullable(),
+}).refine(
+  (d) => !(d.discount_type && d.discount_value === null),
+  { message: "discount_value is required when discount_type is set", path: ["discount_value"] }
+);
+
+export type UpdateStockInput    = z.infer<typeof updateStockSchema>;
+export type UpdateDiscountInput = z.infer<typeof updateDiscountSchema>;

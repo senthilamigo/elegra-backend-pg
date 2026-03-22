@@ -1,3 +1,10 @@
+/**
+ * File: src/index.ts
+ * Path: ecommerce-admin/src/index.ts
+ *
+ * Express application entry point.
+ * Registers all middleware, routes, and starts the HTTP server.
+ */
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -11,6 +18,7 @@ import authRoutes     from "./routes/authRoutes";
 import usersRoutes    from "./routes/usersRoutes";
 import addressRoutes  from "./routes/addressRoutes";
 import sellersRoutes  from "./routes/sellersRoutes";
+import productsRoutes from "./routes/productsRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 const app = express();
@@ -92,6 +100,7 @@ app.get("/health", (_req, res) => {
 // that router has no matching route — causing 401 on public endpoints.
 app.use("/api", authRoutes);        // public: /auth/register, /auth/login, etc.
 app.use("/api", categoriesRoutes);  // public GETs + admin writes (per-route guards)
+app.use("/api", productsRoutes);   // per-route guards — public GETs + admin/seller writes
 app.use("/api", productRoutes);     // blanket requireAuth inside — must come after public routes
 app.use("/api", categoryRoutes);    // blanket requireAuth inside
 app.use("/api", uploadRoutes);      // blanket requireAuth inside
