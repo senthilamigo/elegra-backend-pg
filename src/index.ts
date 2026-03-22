@@ -18,7 +18,9 @@ import authRoutes     from "./routes/authRoutes";
 import usersRoutes    from "./routes/usersRoutes";
 import addressRoutes  from "./routes/addressRoutes";
 import sellersRoutes  from "./routes/sellersRoutes";
-import cartRoutes     from "./routes/cartRoutes";
+import cartRoutes      from "./routes/cartRoutes";
+import shipmentRoutes  from "./routes/shipmentRoutes";
+import orderRoutes     from "./routes/orderRoutes";
 import productsRoutes from "./routes/productsRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
@@ -109,6 +111,8 @@ app.use("/api", usersRoutes);       // blanket requireAuth + requireRole("admin"
 app.use("/api", addressRoutes);     // blanket requireAuth inside
 app.use("/api", sellersRoutes);     // per-route requireAuth + requireRole inside
 app.use("/api", cartRoutes);         // blanket requireAuth — cart + wishlist
+app.use("/api", shipmentRoutes);     // per-route guards — auth GET, admin POST/PATCH
+app.use("/api", orderRoutes);        // per-route guards — order + payment endpoints
 
 // ─────────────────────────────────────────────
 // Error Handling (must be last)
