@@ -21,6 +21,7 @@ import sellersRoutes  from "./routes/sellersRoutes";
 import cartRoutes      from "./routes/cartRoutes";
 import shipmentRoutes  from "./routes/shipmentRoutes";
 import orderRoutes     from "./routes/orderRoutes";
+import reviewRoutes    from "./routes/reviewRoutes";
 import productsRoutes from "./routes/productsRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
@@ -104,6 +105,7 @@ app.get("/health", (_req, res) => {
 app.use("/api", authRoutes);        // public: /auth/register, /auth/login, etc.
 app.use("/api", categoriesRoutes);  // public GETs + admin writes (per-route guards)
 app.use("/api", productsRoutes);   // per-route guards — public GETs + admin/seller writes
+app.use("/api", reviewRoutes);      // per-route guards — public review GET, auth/admin writes
 app.use("/api", productRoutes);     // blanket requireAuth inside — must come after public routes
 app.use("/api", categoryRoutes);    // blanket requireAuth inside
 app.use("/api", uploadRoutes);      // blanket requireAuth inside
