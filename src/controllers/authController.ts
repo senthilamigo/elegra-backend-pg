@@ -95,21 +95,16 @@ export const register = async (
       );
     }
 
-    // Step 3 — If seller, insert sellers row with status='pending'.
-    // Uses supabaseAdmin so this works regardless of email confirmation state.
+    // Step 3 — If seller, insert a sellers row linking the user to the chosen
+    //   seller_profile. The seller_profile already exists (selected from the
+    //   dropdown during signup). sellers.status starts as 'pending'.
     if (body.role_name === "seller" && body.seller_profile) {
-      const sp = body.seller_profile;
       const { error: sellerError } = await supabaseAdmin
         .from("sellers")
         .insert({
-          user_id:       userId,
-          business_name: sp.business_name,
-          contact_name:  sp.contact_name,
-          email:         body.email,
-          phone:         sp.phone,
-          description:   sp.description ?? null,
-          is_verified:   false,
-          status:        "pending",
+          user_id:           userId,
+          seller_profile_id: body.seller_profile.seller_profile_id,
+          status:            "pending",
         });
 
       if (sellerError) {
@@ -117,7 +112,7 @@ export const register = async (
         await supabaseAdmin.from("user_role").delete().eq("id", userId);
         await supabaseAdmin.auth.admin.deleteUser(userId);
         throw new AppError(
-          `Account created but seller profile setup failed: ${sellerError.message}`,
+          `Account created but seller account setup failed: ${sellerError.message}`,
           500
         );
       }
