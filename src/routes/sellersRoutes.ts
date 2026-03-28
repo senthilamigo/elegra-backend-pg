@@ -1,80 +1,77 @@
+/**
+ * File: src/routes/sellersRoutes.ts
+ * Path: ecommerce-admin/src/routes/sellersRoutes.ts
+ *
+ * Routes for seller_profiles and sellers tables.
+ *
+ * seller_profiles (admin-managed):
+ *   GET    /api/seller-profiles            — public (signup dropdown)
+ *   POST   /api/seller-profiles            — admin
+ *   PUT    /api/seller-profiles/:id        — admin
+ *   PATCH  /api/seller-profiles/:id/status — admin
+ *
+ * sellers (user ↔ profile join):
+ *   GET    /api/sellers/me  — seller own account
+ *   GET    /api/sellers     — admin list
+ *   GET    /api/sellers/:id — admin single
+ *   POST   /api/sellers     — auth (link user to profile)
+ *   PATCH  /api/sellers/:id/status — admin
+ *   DELETE /api/sellers/:id        — admin
+ */
+
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth";
 import {
+  listSellerProfiles,
+  createSellerProfile,
+  updateSellerProfile,
+  updateSellerProfileStatus,
   listSellers,
-  getSellerById,
   getMySellerProfile,
+  getSellerById,
   createSeller,
-  updateSeller,
   updateSellerStatus,
-  verifySeller,
   deleteSeller,
 } from "../controllers/sellersController";
 
 const router = Router();
 
 // ─────────────────────────────────────────────
-// Seller — own profile (any authenticated user with seller role)
+// seller_profiles — public + admin
 // ─────────────────────────────────────────────
 
-/** GET  /api/sellers/me     — seller's own profile */
-router.get(
-  "/sellers/me",
-  requireAuth, requireRole("seller"),
-  getMySellerProfile
-);
+/** GET /api/seller-profiles — public: list profiles for signup dropdown */
+router.get("/seller-profiles", listSellerProfiles);
 
-/** POST /api/sellers        — create seller profile (seller registers) */
-router.post(
-  "/sellers",
-  requireAuth, requireRole("seller"),
-  createSeller
-);
+/** POST /api/seller-profiles — admin: create a new profile */
+router.post("/seller-profiles", requireAuth, requireRole("admin"), createSellerProfile);
 
-/** PUT  /api/sellers/:id    — seller updates own profile */
-router.put(
-  "/sellers/:id",
-  requireAuth, requireRole("seller"),
-  updateSeller
-);
+/** PATCH /api/seller-profiles/:id/status — admin: update status/verified */
+router.patch("/seller-profiles/:id/status", requireAuth, requireRole("admin"), updateSellerProfileStatus);
+
+/** PUT /api/seller-profiles/:id — admin: update profile details */
+router.put("/seller-profiles/:id", requireAuth, requireRole("admin"), updateSellerProfile);
 
 // ─────────────────────────────────────────────
-// Admin — full seller management
+// sellers — /me before /:id to avoid param conflict
 // ─────────────────────────────────────────────
 
-/** GET  /api/sellers        — list all sellers (paginated, filterable) */
-router.get(
-  "/sellers",
-  requireAuth, requireRole("admin"),
-  listSellers
-);
+/** GET /api/sellers/me — seller: own account + profile */
+router.get("/sellers/me", requireAuth, requireRole("seller"), getMySellerProfile);
 
-/** GET  /api/sellers/:id    — get any seller by id */
-router.get(
-  "/sellers/:id",
-  requireAuth, requireRole("admin"),
-  getSellerById
-);
+/** GET /api/sellers — admin: list all seller accounts */
+router.get("/sellers", requireAuth, requireRole("admin"), listSellers);
 
-/** PATCH /api/sellers/:id/status  — update seller status */
-router.patch(
-  "/sellers/:id/status",
-  requireAuth, requireRole("admin"),
-  updateSellerStatus
-);
+/** GET /api/sellers/:id — admin: single seller account */
+router.get("/sellers/:id", requireAuth, requireRole("admin"), getSellerById);
 
-/** PATCH /api/sellers/:id/verify  — toggle is_verified */
-router.patch(
-  "/sellers/:id/verify",
-  requireAuth, requireRole("admin"),
-  verifySeller
-);
+/** POST /api/sellers — auth: link user to an existing seller_profile */
+router.post("/sellers", requireAuth, createSeller);
 
-/** DELETE /api/sellers/:id  — permanently delete seller profile */
-router.delete(
-  "/sellers/:id",
-  requireAuth, requireRole("admin"),
-  deleteSeller
-);
+/** PATCH /api/sellers/:id/status — admin: update account status */
+router.patch("/sellers/:id/status", requireAuth, requireRole("admin"), updateSellerStatus);
+
+/** DELETE /api/sellers/:id — admin: remove seller account */
+router.delete("/sellers/:id", requireAuth, requireRole("admin"), deleteSeller);
 
 export default router;

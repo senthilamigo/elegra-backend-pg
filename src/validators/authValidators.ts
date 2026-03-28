@@ -1,3 +1,9 @@
+/**
+ * File: src/validators/authValidators.ts
+ * Path: ecommerce-admin/src/validators/authValidators.ts
+ *
+ * Zod schemas for authentication and user-admin endpoints.
+ */
 import { z } from "zod";
 
 // ─────────────────────────────────────────────
@@ -29,13 +35,11 @@ export const registerSchema = z
       errorMap: () => ({ message: "role_name must be 'admin' or 'seller'" }),
     }),
 
-    // Seller profile — required when role_name is 'seller'
+    // Seller profile — required when role_name is 'seller'.
+    // Contains the seller_profile_id the user selected from the dropdown.
     seller_profile: z
       .object({
-        business_name: z.string().min(1, "Business name is required").max(255),
-        contact_name:  z.string().min(1, "Contact name is required").max(255),
-        phone:         z.string().min(1, "Phone is required").max(20),
-        description:   z.string().max(5000).optional().nullable(),
+        seller_profile_id: z.string().uuid("Must be a valid UUID"),
       })
       .optional(),
   })
