@@ -107,13 +107,13 @@ app.use("/api", authRoutes);        // public: /auth/register, /auth/login, etc.
 app.use("/api", categoriesRoutes);  // public GETs + admin writes (per-route guards)
 app.use("/api", productsRoutes);   // per-route guards — public GETs + admin/seller writes
 app.use("/api", reviewRoutes);      // per-route guards — public review GET, auth/admin writes
+app.use("/api", sellersRoutes);     // per-route guards — public GET /seller-profiles, auth/admin writes
 app.use("/api", adminRoutes);       // blanket requireAuth + requireRole("admin") — analytics
 app.use("/api", productRoutes);     // blanket requireAuth inside — must come after public routes
 app.use("/api", categoryRoutes);    // blanket requireAuth inside
 app.use("/api", uploadRoutes);      // blanket requireAuth inside
 app.use("/api", usersRoutes);       // blanket requireAuth + requireRole("admin") inside
 app.use("/api", addressRoutes);     // blanket requireAuth inside
-app.use("/api", sellersRoutes);     // per-route requireAuth + requireRole inside
 app.use("/api", cartRoutes);         // blanket requireAuth — cart + wishlist
 app.use("/api", shipmentRoutes);     // per-route guards — auth GET, admin POST/PATCH
 app.use("/api", orderRoutes);        // per-route guards — order + payment endpoints
