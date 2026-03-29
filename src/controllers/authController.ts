@@ -38,7 +38,7 @@ function createUserClient(accessToken: string) {
 }
 
 // Columns to select from user_role — mirrors exact table schema
-const USER_ROLE_SELECT = "id, first_name, last_name, role_name, status, created_at";
+const USER_ROLE_SELECT = "id, first_name, last_name, role_name, status, is_seller_partner, seller_id, tagged_seller_partner_id, created_at";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/register   — public

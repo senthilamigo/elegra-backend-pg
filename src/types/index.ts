@@ -98,22 +98,28 @@ declare global {
 
 // ─────────────────────────────────────────────
 // user_role table
-//   id         UUID PRIMARY KEY (FK → auth.users.id)
-//   first_name text             NOT NULL
-//   last_name  text             NULL
-//   role_name  text             NOT NULL  ('customer' | 'seller' | 'admin')
-//   status     varchar(50)      NOT NULL  ('active' | 'suspended' | 'pending')
-//   created_at TIMESTAMP
+//   id                      UUID PRIMARY KEY (FK → auth.users.id)
+//   first_name              text          NOT NULL
+//   last_name               text          NULL
+//   role_name               text          NOT NULL  ('customer' | 'seller' | 'admin')
+//   status                  varchar(50)   NOT NULL  ('active' | 'suspended' | 'pending')
+//   is_seller_partner       BOOLEAN       NULL  — true when user is a seller partner
+//   seller_id               UUID          NULL  — FK → sellers.id
+//   tagged_seller_partner_id UUID         NULL  — FK → user_role.id (partner reference)
+//   created_at              TIMESTAMP
 // ─────────────────────────────────────────────
 
 export type RoleName   = "customer" | "seller" | "admin";
 export type UserStatus = "active" | "suspended" | "pending";
 
 export interface UserRole {
-  id:         string;       // uuid — FK → auth.users.id
-  first_name: string;       // NOT NULL
-  last_name:  string | null; // NULL allowed
-  role_name:  RoleName;     // NOT NULL
-  status:     UserStatus;   // NOT NULL — new column
-  created_at: string;
+  id:                      string;        // uuid — FK → auth.users.id
+  first_name:              string;        // NOT NULL
+  last_name:               string | null; // NULL allowed
+  role_name:               RoleName;      // NOT NULL
+  status:                  UserStatus;    // NOT NULL
+  is_seller_partner:       boolean | null; // optional — true if user is a seller partner
+  seller_id:               string | null;  // optional uuid FK → sellers.id
+  tagged_seller_partner_id: string | null; // optional uuid FK → another user_role.id
+  created_at:              string;
 }
