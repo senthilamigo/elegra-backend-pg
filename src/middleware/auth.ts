@@ -60,7 +60,7 @@ export const requireAuth = async (
   // Load the user_role profile — includes the new `status` column.
   const { data: roleRow, error: roleError } = await supabaseAdmin
     .from("user_role")
-    .select("id, first_name, last_name, role_name, status, created_at")
+    .select("id, first_name, last_name, role_name, status, is_seller_partner, seller_id, tagged_seller_partner_id, created_at")
     .eq("id", authData.user.id)
     .single<UserRole>();
 
