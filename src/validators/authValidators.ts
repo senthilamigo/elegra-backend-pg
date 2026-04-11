@@ -31,9 +31,9 @@ export const registerSchema = z
     last_name:  z.string().max(100).trim().optional(),
 
     // Role selection — only 'admin' or 'seller' at registration
-    role_name: z.enum(["admin", "seller"], {
-      errorMap: () => ({ message: "role_name must be 'admin' or 'seller'" }),
-    }),
+    role_name: z.enum(["customer", "admin", "seller"], {
+    errorMap: () => ({ message: "role_name must be 'customer', 'admin', or 'seller'" }),
+    }).default("customer"),
 
     // Seller profile — required when role_name is 'seller'.
     // Contains the seller_profile_id the user selected from the dropdown.
