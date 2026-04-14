@@ -69,10 +69,16 @@ async function assertSellerCanAccessProduct(productId: string, req: Request): Pr
   const roleName = req.userRole?.role_name;
   if (roleName === "admin") return;
 
-  const sellerId = req.userRole?.seller_id;
-  if (!sellerId) {
-    throw new AppError("No seller profile linked to this account", 403);
-  }
+  const userId = req.user?.id;
+  if (!userId) throw new AppError("Unauthorized", 401);
+
+  const { data: sellerRow } = await supabaseAdmin
+    .from("sellers")
+    .select("id")
+    .eq("user_id", userId)
+    .single<{ id: string }>();
+
+  if (!sellerRow) throw new AppError("No seller profile found for this account", 403);
 
   const { data: product } = await supabaseAdmin
     .from("products")
@@ -84,7 +90,7 @@ async function assertSellerCanAccessProduct(productId: string, req: Request): Pr
     throw new AppError(`Product with id ${productId} not found`, 404);
   }
 
-  if (product.seller_id !== sellerId) {
+  if (product.seller_id !== sellerRow.id) {
     throw new AppError("You do not have permission to manage this product", 403);
   }
 }
@@ -160,9 +166,17 @@ export const listSupplierProducts = async (
     if (productId) query = query.eq("product_id", productId);
 
     if (req.userRole?.role_name === "seller") {
-      const sellerId = req.userRole.seller_id;
-      if (!sellerId) throw new AppError("No seller profile linked to this account", 403);
-      query = query.eq("products.seller_id", sellerId);
+      const userId = req.user?.id;
+      if (!userId) throw new AppError("Unauthorized", 401);
+
+      const { data: sellerRow } = await supabaseAdmin
+        .from("sellers")
+        .select("id")
+        .eq("user_id", userId)
+        .single<{ id: string }>();
+
+      if (!sellerRow) throw new AppError("No seller profile found for this account", 403);
+      query = query.eq("products.seller_id", sellerRow.id);
     }
 
     const { data, error, count } = await query;
