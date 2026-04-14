@@ -1,3 +1,18 @@
+/**
+ * File: src/routes/supplierProductRoutes.ts
+ * Path: ecommerce-admin/src/routes/supplierProductRoutes.ts
+ *
+ * Express routes for supplier-product mapping endpoints mounted under /api.
+ *
+ * Endpoints:
+ *   POST /api/supplier-products
+ *   GET  /api/supplier-products
+ *   PUT  /api/supplier-products/:id
+ *
+ * Access:
+ *   - All routes require authentication and role >= seller.
+ *   - requireRole("seller") allows both seller and admin users.
+ */
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth";
 import {
