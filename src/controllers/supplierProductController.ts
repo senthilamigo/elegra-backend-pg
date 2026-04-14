@@ -1,3 +1,35 @@
+/**
+ * File: src/controllers/supplierProductController.ts
+ * Path: ecommerce-admin/src/controllers/supplierProductController.ts
+ *
+ * Controller handlers for supplier-product mapping APIs.
+ *
+ * Endpoints handled in this file:
+ *   POST /api/supplier-products
+ *     - Creates a mapping between a supplier and a product.
+ *     - Allows optional initial `cost_price` and `lead_time_days`.
+ *     - Validates supplier existence and product access.
+ *
+ *   GET /api/supplier-products
+ *     - Returns paginated supplier-product mappings.
+ *     - Supports optional query filters: `supplier_id`, `product_id`, `page`, `limit`.
+ *     - Sellers are scoped to their own products; admins can see all mappings.
+ *
+ *   PUT /api/supplier-products/:id
+ *     - Updates `cost_price` and/or `lead_time_days` for an existing mapping.
+ *     - Validates mapping id, existence, and role-based product access.
+ *
+ * Access model:
+ *   - Routes are protected with requireRole("seller"), which permits both
+ *     seller and admin users via role hierarchy.
+ *   - Seller users can only manage mappings for products owned by their seller_id.
+ *   - Admin users can manage mappings globally.
+ *
+ * Related DB tables:
+ *   - supplier_products (primary table for these endpoints)
+ *   - suppliers (existence + join metadata)
+ *   - products (ownership checks + join metadata)
+ */
 import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { AppError } from "../middleware/errorHandler";

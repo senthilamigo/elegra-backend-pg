@@ -1,3 +1,20 @@
+/**
+ * File: src/validators/supplierProductValidators.ts
+ * Path: ecommerce-admin/src/validators/supplierProductValidators.ts
+ *
+ * Zod request validation schemas for supplier-product mapping endpoints.
+ *
+ * Schemas:
+ *   - createSupplierProductSchema
+ *       Validates POST /api/supplier-products request body.
+ *       Requires supplier_id + product_id UUIDs and accepts optional
+ *       cost_price / lead_time_days.
+ *
+ *   - updateSupplierProductSchema
+ *       Validates PUT /api/supplier-products/:id request body.
+ *       Allows only cost_price and lead_time_days updates and enforces
+ *       that at least one field is present.
+ */
 import { z } from "zod";
 
 export const createSupplierProductSchema = z.object({
