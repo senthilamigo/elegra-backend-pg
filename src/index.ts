@@ -69,6 +69,7 @@ import usersRoutes      from "./routes/usersRoutes";
 import addressRoutes    from "./routes/addressRoutes";
 import sellersRoutes    from "./routes/sellersRoutes";
 import supplierRoutes   from "./routes/supplierRoutes";   // ← NEW IMPORT
+import supplierProductRoutes from "./routes/supplierProductRoutes";
 import cartRoutes       from "./routes/cartRoutes";
 import shipmentRoutes   from "./routes/shipmentRoutes";
 import orderRoutes      from "./routes/orderRoutes";
@@ -163,6 +164,7 @@ app.use("/api", productsRoutes);    // per-route guards — public GETs + admin/
 app.use("/api", reviewRoutes);      // per-route guards — public review GET, auth/admin writes
 app.use("/api", sellersRoutes);     // per-route guards — public GET /seller-profiles, auth/admin writes
 app.use("/api", supplierRoutes);    // per-route guards — seller+ CRUD (NEW)
+app.use("/api", supplierProductRoutes); // per-route guards — seller+ supplier-product mappings
 app.use("/api", adminRoutes);       // blanket requireAuth + requireRole("admin") — analytics
 app.use("/api", productRoutes);     // blanket requireAuth inside — must come after public routes
 app.use("/api", categoryRoutes);    // blanket requireAuth inside
