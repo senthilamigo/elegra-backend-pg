@@ -8,6 +8,8 @@
  *   - POST /api/supplier-shipments      (create shipment)
  *   - GET  /api/supplier-shipments      (list shipments)
  *   - GET  /api/supplier-shipments/:id  (get shipment)
+ * Endpoint:
+ *   - POST /api/supplier-shipments
  *
  * Access:
  *   - seller role and above (seller + admin)
@@ -16,15 +18,25 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth";
 import {
-  createSupplierShipment as createSupplierShipmentHandler,
-  listSupplierShipments as listSupplierShipmentsHandler,
-  getSupplierShipment as getSupplierShipmentHandler,
+  createSupplierShipment,
+  listSupplierShipments,
+  getSupplierShipment,
 } from "../controllers/supplierShipmentController";
 
-const supplierShipmentRouter = Router();
+const router = Router();
 
-supplierShipmentRouter.post("/supplier-shipments", requireAuth, requireRole("seller"), createSupplierShipmentHandler);
-supplierShipmentRouter.get("/supplier-shipments", requireAuth, requireRole("seller"), listSupplierShipmentsHandler);
-supplierShipmentRouter.get("/supplier-shipments/:id", requireAuth, requireRole("seller"), getSupplierShipmentHandler);
+router.post("/supplier-shipments", requireAuth, requireRole("seller"), createSupplierShipment);
+router.get("/supplier-shipments", requireAuth, requireRole("seller"), listSupplierShipments);
+router.get("/supplier-shipments/:id", requireAuth, requireRole("seller"), getSupplierShipment);
+import { createSupplierShipment } from "../controllers/supplierShipmentController";
 
-export default supplierShipmentRouter;
+const router = Router();
+
+router.post(
+  "/supplier-shipments",
+  requireAuth,
+  requireRole("seller"),
+  createSupplierShipment
+);
+
+export default router;
