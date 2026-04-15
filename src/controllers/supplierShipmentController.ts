@@ -2,6 +2,20 @@
  * File: src/controllers/supplierShipmentController.ts
  * Path: src/controllers/supplierShipmentController.ts
  *
+ * Handlers for supplier shipment endpoints.
+ *
+ * Endpoints:
+ *   - POST /api/supplier-shipments      (create shipment + inventory + allocations)
+ *   - GET  /api/supplier-shipments      (list shipments)
+ *   - GET  /api/supplier-shipments/:id  (get one shipment)
+ *
+ * Access:
+ *   - seller and admin roles (enforced at route layer via requireRole("seller"))
+ *
+ * Create workflow:
+ *   1) Insert supplier_shipments
+ *   2) Insert supplier_shipment_items
+ *   3) Create inventory_batches (one per product_variant)
  * Handler for supplier shipment creation endpoint.
  *
  * Endpoint:
@@ -21,6 +35,9 @@
  *   5) Distribute shipping_cost into shipment_cost_allocations
  *      and update inventory_batches.landed_cost
  *
+ * Transaction note:
+ *   Supabase REST calls do not provide explicit BEGIN/COMMIT control in this layer.
+ *   This file implements compensating rollback cleanup when a downstream step fails.
  * Note on transactions:
  *   Supabase REST calls do not expose explicit BEGIN/COMMIT from here.
  *   This controller uses a compensating rollback strategy: if any step fails
@@ -32,6 +49,12 @@ import { Request, Response, NextFunction } from "express";
 import { supabaseAdmin } from "../config/supabase";
 import { AppError } from "../middleware/errorHandler";
 import { ApiResponse } from "../types";
+import {
+  SupplierShipment,
+  SupplierShipmentItem,
+  InventoryBatch,
+  ShipmentCostAllocation,
+} from "../types/supplierShipment";
 import { SupplierShipment, SupplierShipmentItem, InventoryBatch, ShipmentCostAllocation } from "../types/supplierShipment";
 import { createSupplierShipmentSchema } from "../validators/supplierShipmentValidators";
 
@@ -47,6 +70,18 @@ type PurchaseOrderItemRow = {
   product_variant_id: string;
   quantity: number;
   unit_cost: number | null;
+  received_quantity: number | null;
+};
+
+type ShipmentListRow = SupplierShipment & {
+  purchase_orders?: {
+    id: string;
+    seller_id: string;
+  } | null;
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 };
 
 const SUPPLIER_SHIPMENT_SELECT = `
@@ -62,6 +97,20 @@ const SUPPLIER_SHIPMENT_SELECT = `
   created_at
 `.trim();
 
+const SUPPLIER_SHIPMENT_LIST_SELECT = `
+  id,
+  supplier_id,
+  purchase_order_id,
+  courier_name,
+  tracking_number,
+  shipment_date,
+  delivery_date,
+  shipping_cost,
+  status,
+  created_at,
+  purchase_orders ( id, seller_id )
+`.trim();
+
 function isAdmin(req: Request): boolean {
   return req.userRole?.role_name === "admin";
 }
@@ -69,6 +118,194 @@ function isAdmin(req: Request): boolean {
 function round2(value: number): number {
   return Number(value.toFixed(2));
 }
+
+function validateUuid(id: string, label = "id"): void {
+  if (!UUID_RE.test(id)) throw new AppError(`Invalid ${label} — must be a valid UUID`, 400);
+}
+
+function parsePage(query: Record<string, unknown>) {
+  const page = Math.max(1, parseInt(String(query.page ?? "1"), 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(String(query.limit ?? "20"), 10) || 20));
+  return { page, limit, from: (page - 1) * limit, to: (page - 1) * limit + limit - 1 };
+}
+
+function normalizeItems(items: Array<{ product_variant_id: string; quantity: number }>) {
+  const grouped = new Map<string, number>();
+
+  for (const item of items) {
+    grouped.set(item.product_variant_id, (grouped.get(item.product_variant_id) ?? 0) + item.quantity);
+  }
+
+  return Array.from(grouped.entries()).map(([product_variant_id, quantity]) => ({
+    product_variant_id,
+    quantity,
+  }));
+}
+
+async function fetchShipmentDetails(shipmentId: string) {
+  const { data: shipment, error: shipmentError } = await supabaseAdmin
+    .from("supplier_shipments")
+    .select(SUPPLIER_SHIPMENT_SELECT)
+    .eq("id", shipmentId)
+    .single<SupplierShipment>();
+
+  if (shipmentError || !shipment) {
+    throw new AppError(`Supplier shipment with id ${shipmentId} not found`, 404);
+  }
+
+  const { data: shipmentItems, error: shipmentItemsError } = await supabaseAdmin
+    .from("supplier_shipment_items")
+    .select("id, shipment_id, product_variant_id, quantity")
+    .eq("shipment_id", shipmentId)
+    .order("id", { ascending: true })
+    .returns<SupplierShipmentItem[]>();
+
+  if (shipmentItemsError) {
+    throw new AppError(`Failed to fetch supplier shipment items: ${shipmentItemsError.message}`, 500);
+  }
+
+  const { data: inventoryBatches, error: inventoryBatchesError } = await supabaseAdmin
+    .from("inventory_batches")
+    .select("id, product_variant_id, supplier_id, shipment_id, quantity, remaining_quantity, unit_cost, landed_cost, created_at")
+    .eq("shipment_id", shipmentId)
+    .order("created_at", { ascending: true })
+    .returns<InventoryBatch[]>();
+
+  if (inventoryBatchesError) {
+    throw new AppError(`Failed to fetch inventory batches: ${inventoryBatchesError.message}`, 500);
+  }
+
+  const { data: allocations, error: allocationsError } = await supabaseAdmin
+    .from("shipment_cost_allocations")
+    .select("id, shipment_id, inventory_batch_id, allocated_cost")
+    .eq("shipment_id", shipmentId)
+    .order("id", { ascending: true })
+    .returns<ShipmentCostAllocation[]>();
+
+  if (allocationsError) {
+    throw new AppError(`Failed to fetch shipment cost allocations: ${allocationsError.message}`, 500);
+  }
+
+  const totalQuantity = (shipmentItems ?? []).reduce((sum, item) => sum + item.quantity, 0);
+
+  return {
+    shipment,
+    shipment_items: shipmentItems ?? [],
+    inventory_batches: inventoryBatches ?? [],
+    total_quantity: totalQuantity,
+    shipment_cost_allocations: allocations ?? [],
+  };
+}
+
+export const listSupplierShipments = async (
+  req: Request,
+  res: Response<ApiResponse<unknown>>,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { page, limit, from, to } = parsePage(req.query as Record<string, unknown>);
+    const admin = isAdmin(req);
+
+    let query = supabaseAdmin
+      .from("supplier_shipments")
+      .select(SUPPLIER_SHIPMENT_LIST_SELECT, { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (!admin) {
+      const callerSellerId = req.userRole?.seller_id;
+      if (!callerSellerId) throw new AppError("No seller profile linked to this account", 403);
+      query = query.eq("purchase_orders.seller_id", callerSellerId);
+    }
+
+    if (req.query.purchase_order_id) {
+      const purchaseOrderId = String(req.query.purchase_order_id);
+      validateUuid(purchaseOrderId, "purchase_order_id");
+      query = query.eq("purchase_order_id", purchaseOrderId);
+    }
+
+    if (req.query.supplier_id) {
+      const supplierId = String(req.query.supplier_id);
+      validateUuid(supplierId, "supplier_id");
+      query = query.eq("supplier_id", supplierId);
+    }
+
+    if (req.query.status) {
+      const status = String(req.query.status);
+      if (![
+        "in_transit",
+        "delivered",
+      ].includes(status)) throw new AppError("status must be 'in_transit' or 'delivered'", 400);
+      query = query.eq("status", status);
+    }
+
+    const { data, error, count } = await query.returns<ShipmentListRow[]>();
+
+    if (error) throw new AppError(`Failed to fetch supplier shipments: ${error.message}`, 500);
+
+    const shipments = (data ?? []).map((row) => ({
+      id: row.id,
+      supplier_id: row.supplier_id,
+      purchase_order_id: row.purchase_order_id,
+      courier_name: row.courier_name,
+      tracking_number: row.tracking_number,
+      shipment_date: row.shipment_date,
+      delivery_date: row.delivery_date,
+      shipping_cost: row.shipping_cost,
+      status: row.status,
+      created_at: row.created_at,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        data: shipments,
+        total: count ?? 0,
+        page,
+        limit,
+        hasMore: (count ?? 0) > page * limit,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getSupplierShipment = async (
+  req: Request,
+  res: Response<ApiResponse<unknown>>,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    validateUuid(id, "supplier shipment id");
+
+    const { data: shipmentWithOwner, error: shipmentOwnerError } = await supabaseAdmin
+      .from("supplier_shipments")
+      .select("id, purchase_order_id, purchase_orders ( id, seller_id )")
+      .eq("id", id)
+      .single<{ id: string; purchase_order_id: string | null; purchase_orders?: { id: string; seller_id: string } | null }>();
+
+    if (shipmentOwnerError || !shipmentWithOwner) {
+      throw new AppError(`Supplier shipment with id ${id} not found`, 404);
+    }
+
+    if (!isAdmin(req)) {
+      const callerSellerId = req.userRole?.seller_id;
+      if (!callerSellerId) throw new AppError("No seller profile linked to this account", 403);
+
+      if (!shipmentWithOwner.purchase_orders || shipmentWithOwner.purchase_orders.seller_id !== callerSellerId) {
+        throw new AppError(`Supplier shipment with id ${id} not found`, 404);
+      }
+    }
+
+    const details = await fetchShipmentDetails(id);
+
+    res.status(200).json({ success: true, data: details });
+  } catch (err) {
+    next(err);
+  }
+};
 
 export const createSupplierShipment = async (
   req: Request,
@@ -79,6 +316,7 @@ export const createSupplierShipment = async (
 
   try {
     const body = createSupplierShipmentSchema.parse(req.body);
+    const normalizedItems = normalizeItems(body.items);
 
     const { data: po, error: poError } = await supabaseAdmin
       .from("purchase_orders")
