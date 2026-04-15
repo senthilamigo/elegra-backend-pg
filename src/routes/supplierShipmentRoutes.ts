@@ -8,6 +8,8 @@
  *   - POST /api/supplier-shipments      (create shipment)
  *   - GET  /api/supplier-shipments      (list shipments)
  *   - GET  /api/supplier-shipments/:id  (get shipment)
+ * Endpoint:
+ *   - POST /api/supplier-shipments
  *
  * Access:
  *   - seller role and above (seller + admin)
@@ -26,5 +28,15 @@ const router = Router();
 router.post("/supplier-shipments", requireAuth, requireRole("seller"), createSupplierShipment);
 router.get("/supplier-shipments", requireAuth, requireRole("seller"), listSupplierShipments);
 router.get("/supplier-shipments/:id", requireAuth, requireRole("seller"), getSupplierShipment);
+import { createSupplierShipment } from "../controllers/supplierShipmentController";
+
+const router = Router();
+
+router.post(
+  "/supplier-shipments",
+  requireAuth,
+  requireRole("seller"),
+  createSupplierShipment
+);
 
 export default router;
