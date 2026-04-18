@@ -2,19 +2,16 @@
  * File: src/types/supplierShipment.ts
  * Path: src/types/supplierShipment.ts
  *
- * Interfaces for supplier shipment workflows.
+ * TypeScript interfaces for supplier shipment creation.
  *
- * Primary tables:
+ * Tables represented:
  *   - supplier_shipments
  *   - supplier_shipment_items
  *   - inventory_batches
  *   - shipment_cost_allocations
- *
- * Notes:
- *   - A single supplier shipment can include multiple product variants.
- *   - One inventory batch is created per shipped product variant.
- *   - shipping_cost is allocated across created inventory batches proportionally by quantity.
  */
+
+export type SupplierShipmentStatus = "in_transit" | "delivered";
 
 export interface SupplierShipment {
   id: string;
@@ -25,7 +22,7 @@ export interface SupplierShipment {
   shipment_date: string | null;
   delivery_date: string | null;
   shipping_cost: number | null;
-  status: string | null;
+  status: SupplierShipmentStatus | null;
   created_at: string;
 }
 
