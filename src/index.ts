@@ -72,6 +72,7 @@ import supplierRoutes   from "./routes/supplierRoutes";   // ← NEW IMPORT
 import supplierProductRoutes from "./routes/supplierProductRoutes";
 import purchaseOrderRoutes from "./routes/purchaseOrderRoutes";
 import supplierShipmentRoutes from "./routes/supplierShipmentRoutes";
+import inventoryRoutes from "./routes/inventoryRoutes";
 import cartRoutes       from "./routes/cartRoutes";
 import shipmentRoutes   from "./routes/shipmentRoutes";
 import orderRoutes      from "./routes/orderRoutes";
@@ -169,6 +170,7 @@ app.use("/api", supplierRoutes);    // per-route guards — seller+ CRUD (NEW)
 app.use("/api", supplierProductRoutes); // per-route guards — seller+ supplier-product mappings
 app.use("/api", purchaseOrderRoutes); // per-route guards — seller/admin purchase orders
 app.use("/api", supplierShipmentRoutes); // per-route guards — seller/admin supplier shipment intake
+app.use("/api", inventoryRoutes); // per-route guards — seller/admin inventory visibility
 app.use("/api", adminRoutes);       // blanket requireAuth + requireRole("admin") — analytics
 app.use("/api", productRoutes);     // blanket requireAuth inside — must come after public routes
 app.use("/api", categoryRoutes);    // blanket requireAuth inside
