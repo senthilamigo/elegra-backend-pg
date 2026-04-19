@@ -16,34 +16,53 @@
  * supplier-workflow routers are grouped together in registration order.
  * Uses per-route guards — safe to place anywhere above the blanket-auth routers.
  * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * CHANGE (April 2026) — Supplier Return Shipments
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Added:
+ *   import supplierReturnShipmentRoutes from "./routes/supplierReturnShipmentRoutes";
+ *   app.use("/api", supplierReturnShipmentRoutes);
+ *
+ * Endpoints registered:
+ *   POST /api/supplier-return-shipments  — create return shipment (atomic transaction)
+ *   GET  /api/supplier-return-shipments  — list return shipments (paginated)
+ *   GET  /api/supplier-return-shipments/:id — track single return shipment
+ *
+ * Placement: after supplierReturnRoutes and before supplierReplacementRoutes,
+ * grouping all supplier-workflow routers together in the per-route-guarded
+ * section (before the blanket-auth routers).
+ * Uses per-route guards — safe at any position above adminRoutes.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 
-import productRoutes             from "./routes/productRoutes";
-import categoryRoutes            from "./routes/categoryRoutes";
-import categoriesRoutes          from "./routes/categoriesRoutes";
-import uploadRoutes              from "./routes/uploadRoutes";
-import authRoutes                from "./routes/authRoutes";
-import usersRoutes               from "./routes/usersRoutes";
-import addressRoutes             from "./routes/addressRoutes";
-import sellersRoutes             from "./routes/sellersRoutes";
-import supplierRoutes            from "./routes/supplierRoutes";
-import supplierProductRoutes     from "./routes/supplierProductRoutes";
-import purchaseOrderRoutes       from "./routes/purchaseOrderRoutes";
-import supplierShipmentRoutes    from "./routes/supplierShipmentRoutes";
-import supplierReturnRoutes      from "./routes/supplierReturnRoutes";
-import supplierReplacementRoutes from "./routes/supplierReplacementRoutes"; // ← NEW
-import inventoryRoutes           from "./routes/inventoryRoutes";
-import costsRoutes               from "./routes/costsRoutes";
-import cartRoutes                from "./routes/cartRoutes";
-import shipmentRoutes            from "./routes/shipmentRoutes";
-import orderRoutes               from "./routes/orderRoutes";
-import reviewRoutes              from "./routes/reviewRoutes";
-import adminRoutes               from "./routes/adminRoutes";
-import productsRoutes            from "./routes/productsRoutes";
+import productRoutes                  from "./routes/productRoutes";
+import categoryRoutes                 from "./routes/categoryRoutes";
+import categoriesRoutes               from "./routes/categoriesRoutes";
+import uploadRoutes                   from "./routes/uploadRoutes";
+import authRoutes                     from "./routes/authRoutes";
+import usersRoutes                    from "./routes/usersRoutes";
+import addressRoutes                  from "./routes/addressRoutes";
+import sellersRoutes                  from "./routes/sellersRoutes";
+import supplierRoutes                 from "./routes/supplierRoutes";
+import supplierProductRoutes          from "./routes/supplierProductRoutes";
+import purchaseOrderRoutes            from "./routes/purchaseOrderRoutes";
+import supplierShipmentRoutes         from "./routes/supplierShipmentRoutes";
+import supplierReturnRoutes           from "./routes/supplierReturnRoutes";
+import supplierReturnShipmentRoutes   from "./routes/supplierReturnShipmentRoutes"; // ← NEW
+import supplierReplacementRoutes      from "./routes/supplierReplacementRoutes";
+import inventoryRoutes                from "./routes/inventoryRoutes";
+import costsRoutes                    from "./routes/costsRoutes";
+import cartRoutes                     from "./routes/cartRoutes";
+import shipmentRoutes                 from "./routes/shipmentRoutes";
+import orderRoutes                    from "./routes/orderRoutes";
+import reviewRoutes                   from "./routes/reviewRoutes";
+import adminRoutes                    from "./routes/adminRoutes";
+import productsRoutes                 from "./routes/productsRoutes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 
 const app  = express();
@@ -126,28 +145,29 @@ app.get("/health", (_req, res) => {
 // router mounted at a matching prefix in registration order. If a router
 // with blanket requireAuth is reached first, it runs requireAuth even if
 // that router has no matching route — causing 401 on public endpoints.
-app.use("/api", authRoutes);                 // public: /auth/register, /auth/login, etc.
-app.use("/api", categoriesRoutes);           // public GETs + admin writes (per-route guards)
-app.use("/api", productsRoutes);             // per-route guards — public GETs + admin/seller writes
-app.use("/api", reviewRoutes);               // per-route guards — public review GET, auth/admin writes
-app.use("/api", sellersRoutes);              // per-route guards — public GET /seller-profiles, auth/admin writes
-app.use("/api", supplierRoutes);             // per-route guards — seller+ supplier CRUD
-app.use("/api", supplierProductRoutes);      // per-route guards — seller+ supplier-product mappings
-app.use("/api", purchaseOrderRoutes);        // per-route guards — seller/admin purchase orders
-app.use("/api", supplierShipmentRoutes);     // per-route guards — seller/admin supplier shipment intake
-app.use("/api", supplierReturnRoutes);       // per-route guards — seller/admin supplier returns
-app.use("/api", supplierReplacementRoutes);  // per-route guards — seller/admin supplier replacements (NEW)
-app.use("/api", inventoryRoutes);            // per-route guards — seller/admin inventory visibility
-app.use("/api", costsRoutes);                // per-route guards — seller/admin cost allocations
-app.use("/api", adminRoutes);                // blanket requireAuth + requireRole("admin") — analytics
-app.use("/api", productRoutes);              // blanket requireAuth inside — must come after public routes
-app.use("/api", categoryRoutes);             // blanket requireAuth inside
-app.use("/api", uploadRoutes);               // blanket requireAuth inside
-app.use("/api", usersRoutes);                // blanket requireAuth + requireRole("admin") inside
-app.use("/api", addressRoutes);              // blanket requireAuth inside
-app.use("/api", cartRoutes);                 // blanket requireAuth — cart + wishlist
-app.use("/api", shipmentRoutes);             // per-route guards — auth GET, admin POST/PATCH
-app.use("/api", orderRoutes);                // per-route guards — order + payment endpoints
+app.use("/api", authRoutes);                       // public: /auth/register, /auth/login, etc.
+app.use("/api", categoriesRoutes);                 // public GETs + admin writes (per-route guards)
+app.use("/api", productsRoutes);                   // per-route guards — public GETs + admin/seller writes
+app.use("/api", reviewRoutes);                     // per-route guards — public review GET, auth/admin writes
+app.use("/api", sellersRoutes);                    // per-route guards — public GET /seller-profiles, auth/admin writes
+app.use("/api", supplierRoutes);                   // per-route guards — seller+ supplier CRUD
+app.use("/api", supplierProductRoutes);            // per-route guards — seller+ supplier-product mappings
+app.use("/api", purchaseOrderRoutes);              // per-route guards — seller/admin purchase orders
+app.use("/api", supplierShipmentRoutes);           // per-route guards — seller/admin supplier shipment intake
+app.use("/api", supplierReturnRoutes);             // per-route guards — seller/admin supplier returns
+app.use("/api", supplierReturnShipmentRoutes);     // per-route guards — seller/admin return shipments (NEW)
+app.use("/api", supplierReplacementRoutes);        // per-route guards — seller/admin supplier replacements
+app.use("/api", inventoryRoutes);                  // per-route guards — seller/admin inventory visibility
+app.use("/api", costsRoutes);                      // per-route guards — seller/admin cost allocations
+app.use("/api", adminRoutes);                      // blanket requireAuth + requireRole("admin") — analytics
+app.use("/api", productRoutes);                    // blanket requireAuth inside — must come after public routes
+app.use("/api", categoryRoutes);                   // blanket requireAuth inside
+app.use("/api", uploadRoutes);                     // blanket requireAuth inside
+app.use("/api", usersRoutes);                      // blanket requireAuth + requireRole("admin") inside
+app.use("/api", addressRoutes);                    // blanket requireAuth inside
+app.use("/api", cartRoutes);                       // blanket requireAuth — cart + wishlist
+app.use("/api", shipmentRoutes);                   // per-route guards — auth GET, admin POST/PATCH
+app.use("/api", orderRoutes);                      // per-route guards — order + payment endpoints
 
 // ─────────────────────────────────────────────
 // Error Handling (must be last)
