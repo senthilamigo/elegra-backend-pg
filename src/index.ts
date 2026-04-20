@@ -6,6 +6,28 @@
  * Registers all middleware, routes, and starts the HTTP server.
  *
  * ─────────────────────────────────────────────────────────────────────────────
+ * CHANGE (April 2026) — Traceability & Analytics
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Added:
+ *   import traceRoutes     from "./routes/traceRoutes";
+ *   import analyticsRoutes from "./routes/analyticsRoutes";
+ *
+ *   app.use("/api", traceRoutes);
+ *   app.use("/api", analyticsRoutes);
+ *
+ * Endpoints added:
+ *   GET /api/trace/product/:variantId  — trace variant → supplier chain
+ *   GET /api/trace/order/:orderId      — trace order → supplier chain
+ *   GET /api/analytics/suppliers       — supplier performance metrics
+ *   GET /api/analytics/costs           — cost analysis (inbound/return/net)
+ *
+ * Placement: after supplierReplacementRoutes and before inventoryRoutes so
+ * that all supplier-workflow and analytics routers are grouped together in
+ * the per-route-guarded section (before adminRoutes).
+ * Both routers use per-route guards — safe at any position above adminRoutes.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
  * CHANGE (April 2026) — Supplier Replacements
  * ─────────────────────────────────────────────────────────────────────────────
  * Added:
@@ -53,8 +75,10 @@ import supplierProductRoutes          from "./routes/supplierProductRoutes";
 import purchaseOrderRoutes            from "./routes/purchaseOrderRoutes";
 import supplierShipmentRoutes         from "./routes/supplierShipmentRoutes";
 import supplierReturnRoutes           from "./routes/supplierReturnRoutes";
-import supplierReturnShipmentRoutes   from "./routes/supplierReturnShipmentRoutes"; // ← NEW
+import supplierReturnShipmentRoutes   from "./routes/supplierReturnShipmentRoutes";
 import supplierReplacementRoutes      from "./routes/supplierReplacementRoutes";
+import traceRoutes                    from "./routes/traceRoutes";       // ← NEW
+import analyticsRoutes                from "./routes/analyticsRoutes";   // ← NEW
 import inventoryRoutes                from "./routes/inventoryRoutes";
 import costsRoutes                    from "./routes/costsRoutes";
 import cartRoutes                     from "./routes/cartRoutes";
@@ -155,8 +179,10 @@ app.use("/api", supplierProductRoutes);            // per-route guards — selle
 app.use("/api", purchaseOrderRoutes);              // per-route guards — seller/admin purchase orders
 app.use("/api", supplierShipmentRoutes);           // per-route guards — seller/admin supplier shipment intake
 app.use("/api", supplierReturnRoutes);             // per-route guards — seller/admin supplier returns
-app.use("/api", supplierReturnShipmentRoutes);     // per-route guards — seller/admin return shipments (NEW)
+app.use("/api", supplierReturnShipmentRoutes);     // per-route guards — seller/admin return shipments
 app.use("/api", supplierReplacementRoutes);        // per-route guards — seller/admin supplier replacements
+app.use("/api", traceRoutes);                      // per-route guards — seller/admin supply-chain traceability (NEW)
+app.use("/api", analyticsRoutes);                  // per-route guards — seller/admin analytics (NEW)
 app.use("/api", inventoryRoutes);                  // per-route guards — seller/admin inventory visibility
 app.use("/api", costsRoutes);                      // per-route guards — seller/admin cost allocations
 app.use("/api", adminRoutes);                      // blanket requireAuth + requireRole("admin") — analytics
