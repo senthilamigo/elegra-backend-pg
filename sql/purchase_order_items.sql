@@ -1,10 +1,20 @@
-CREATE TABLE purchase_order_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    purchase_order_id UUID NOT NULL
-        REFERENCES purchase_orders(id) ON DELETE CASCADE,
-    product_variant_id UUID NOT NULL
-        REFERENCES product_variants(id),
-    quantity INTEGER NOT NULL,
-    unit_cost NUMERIC(12,2),
-    received_quantity INTEGER DEFAULT 0
-);
+create table public.purchase_order_items (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  purchase_order_id uuid not null,
+  product_variant_id uuid not null,
+  quantity integer not null,
+  unit_cost numeric(12, 2) null,
+  received_quantity integer null default 0,
+  cgst_percent numeric(5, 2) null,
+  sgst_percent numeric(5, 2) null,
+  igst_percent numeric(5, 2) null,
+  cgst_amount numeric(12, 2) null,
+  sgst_amount numeric(12, 2) null,
+  igst_amount numeric(12, 2) null,
+  discount_type character varying(20) null,
+  discount_value numeric(12, 2) null,
+  discount_amount numeric(12, 2) null,
+  constraint purchase_order_items_pkey primary key (id),
+  constraint purchase_order_items_product_variant_id_fkey foreign KEY (product_variant_id) references product_variants (id),
+  constraint purchase_order_items_purchase_order_id_fkey foreign KEY (purchase_order_id) references purchase_orders (id) on delete CASCADE
+) TABLESPACE pg_default;
