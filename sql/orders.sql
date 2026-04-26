@@ -8,10 +8,12 @@ create table public.orders (
   billing_address_id uuid null,
   payment_id uuid null,
   shipment_id uuid null,
+  sold_by uuid null,
   constraint orders_pkey primary key (id),
-  constraint orders_billing_address_id_fkey foreign KEY (billing_address_id) references address (id),
   constraint orders_payment_id_fkey foreign KEY (payment_id) references payment (id),
-  constraint orders_shipment_id_fkey foreign KEY (shipment_id) references shipment (id),
+  constraint orders_billing_address_id_fkey foreign KEY (billing_address_id) references address (id),
   constraint orders_shipping_address_id_fkey foreign KEY (shipping_address_id) references address (id),
-  constraint orders_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE
+  constraint orders_sold_by_fkey foreign KEY (sold_by) references auth.users (id),
+  constraint orders_user_id_fkey foreign KEY (user_id) references auth.users (id) on delete CASCADE,
+  constraint orders_shipment_id_fkey foreign KEY (shipment_id) references shipment (id)
 ) TABLESPACE pg_default;
