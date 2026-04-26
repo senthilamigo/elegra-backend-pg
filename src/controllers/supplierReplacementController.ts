@@ -5,6 +5,32 @@
  * Handlers for supplier replacement endpoints.
  *
  * ─────────────────────────────────────────────────────────────────────────────
+ * BUG FIX (April 2026) — GET /api/supplier-replacements returns a DB join error
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * ROOT CAUSE:
+ *   listSupplierReplacements previously applied seller scoping by calling:
+ *
+ *     query = query.eq("supplier_returns.seller_id", sellerId);
+ *
+ *   Supabase PostgREST does NOT support filtering on columns of a joined /
+ *   embedded table using dot-notation. The filter is silently mis-interpreted
+ *   or triggers a schema-cache error ("Could not find a relationship between
+ *   'supplier_replacements' and 'supplier_returns' in the schema cache").
+ *
+ * FIX — Two-step ID pre-fetch strategy (mirrors the pattern already used for
+ *   the supplier replacements screen in the admin frontend):
+ *
+ *   Step 1: Query supplier_returns WHERE seller_id = sellerId → collect IDs.
+ *   Step 2: Filter supplier_replacements WHERE return_id IN (those IDs).
+ *
+ *   This avoids all dot-notation join filters on the main query and is fully
+ *   compatible with Supabase PostgREST.
+ *
+ *   The REPLACEMENT_SELECT join on supplier_returns is kept for response
+ *   enrichment only — it is never used as a WHERE filter target.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
  * Endpoints implemented:
  * ─────────────────────────────────────────────────────────────────────────────
  *
@@ -18,28 +44,26 @@
  *       6. INSERT return_shipment_cost_allocations
  *       7. INSERT supplier_replacements linking return ↔ shipment
  *     Rollback: if any step after (3) fails, previously inserted rows are
- *     deleted to keep data consistent (compensating rollback pattern — same
- *     approach used throughout the supplier shipment controller).
+ *     deleted to keep data consistent (compensating rollback pattern).
  *
  *   POST /api/supplier-replacements  (Create replacement record only)
  *     Lightweight path when the body does NOT contain a `shipment` object:
  *       1. Validate the linked supplier_returns record exists and caller has access
  *       2. Optionally validate a pre-existing shipment_id if supplied
  *       3. INSERT supplier_replacements only
- *     No rollback needed — single insert.
  *
  *   GET /api/supplier-replacements
  *     Paginated list of supplier_replacements with joined context:
  *       - supplier_returns (supplier_id, seller_id, reason, status)
  *       - supplier_return_shipments (shipment metadata)
- *     Sellers see only replacements for their own returns.
- *     Admins see all. Optional ?return_id= and ?status= filters.
+ *     Sellers see only replacements for their own returns (via two-step fetch).
+ *     Admins see all. Optional ?return_id=, ?status=, ?seller_id= filters.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * Access model
  * ─────────────────────────────────────────────────────────────────────────────
  *   Route layer enforces requireAuth + requireRole("seller").
- *   This controller additionally enforces seller-level data scoping:
+ *   Controller additionally enforces seller-level data scoping:
  *     - Seller users can only access replacements whose underlying
  *       supplier_returns.seller_id matches their linked seller profile.
  *     - Admin users bypass the seller_id ownership check.
@@ -122,8 +146,9 @@ function mustGetSellerId(req: Request): string {
 }
 
 /**
- * Rounds a number to 2 decimal places using the same helper pattern
- * used across the supplier shipment and costs controllers.
+ * Rounds a number to 2 decimal places.
+ * Consistent with the helper used in costsController.ts and
+ * supplierShipmentController.ts.
  */
 function round2(value: number): number {
   return Number(value.toFixed(2));
@@ -131,8 +156,13 @@ function round2(value: number): number {
 
 /**
  * Columns selected for the supplier_replacements list/get queries.
- * Joins supplier_returns for ownership checks and display context,
- * and supplier_return_shipments for shipment metadata.
+ * Joins supplier_returns for display context and supplier_return_shipments
+ * for shipment metadata.
+ *
+ * NOTE: This join is used for RESPONSE ENRICHMENT only.
+ * It must never be used as the target of a WHERE / .eq() filter —
+ * PostgREST does not support dot-notation filtering on embedded joins.
+ * Seller scoping is handled via the two-step return_id pre-fetch below.
  */
 const REPLACEMENT_SELECT = `
   id,
@@ -182,10 +212,10 @@ const RETURN_SHIPMENT_SELECT = `
 // Fetches a supplier_returns row and verifies the caller has permission to
 // access it. Sellers may only work with their own returns; admins bypass.
 //
-// Returns the supplier_returns row so callers can reuse the supplier_id.
+// Returns the supplier_returns row so callers can reuse supplier_id.
 // Throws 404 if the return does not exist.
-// Throws 403 if the caller is a non-admin seller whose seller_id does not
-// match supplier_returns.seller_id.
+// Throws 404 (not 403) for non-admin sellers to avoid leaking resource
+// existence for other sellers.
 // ─────────────────────────────────────────────────────────────────────────────
 async function assertReturnAccess(
   returnId: string,
@@ -204,7 +234,7 @@ async function assertReturnAccess(
   if (!isAdmin(req)) {
     const sellerId = mustGetSellerId(req);
     if (data.seller_id !== sellerId) {
-      // Return 404 to avoid leaking whether the return exists for another seller
+      // 404 avoids leaking whether the return exists for another seller
       throw new AppError(`Supplier return with id ${returnId} not found`, 404);
     }
   }
@@ -229,6 +259,46 @@ function assertNoDuplicateBatchIds(
     }
     seen.add(item.inventory_batch_id);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal helper — resolveVisibleReturnIds
+//
+// FIX: Replaces the broken dot-notation join filter
+//   query.eq("supplier_returns.seller_id", sellerId)   ← PostgREST rejects this
+//
+// with a two-step approach:
+//   Step 1: SELECT id FROM supplier_returns WHERE seller_id = sellerId
+//   Step 2: Filter supplier_replacements WHERE return_id IN (those ids)
+//
+// Returns:
+//   - string[] of return IDs when a seller scope is needed
+//   - null when no scoping is required (admin with no seller_id filter)
+//   - [] (empty array) when the seller has no returns — caller should
+//     short-circuit and return an empty paginated response immediately.
+//
+// @param sellerIdFilter  The seller_id to scope by, or null for no scoping.
+// ─────────────────────────────────────────────────────────────────────────────
+async function resolveVisibleReturnIds(
+  sellerIdFilter: string | null
+): Promise<string[] | null> {
+  // null → admin with no filter → all replacements visible
+  if (!sellerIdFilter) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("supplier_returns")
+    .select("id")
+    .eq("seller_id", sellerIdFilter);
+
+  if (error) {
+    throw new AppError(
+      `Failed to resolve visible supplier returns: ${error.message}`,
+      500
+    );
+  }
+
+  // Return the list of matching return IDs (may be empty)
+  return (data ?? []).map((row: { id: string }) => row.id);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -267,8 +337,6 @@ export const recordReplacementShipment = async (
     assertNoDuplicateBatchIds(body.shipment.items);
 
     // ── 3. Validate each inventory_batch belongs to the same supplier ─────────
-    //    We verify that all referenced batches are linked to the same supplier
-    //    as the return to prevent cross-supplier cost allocations.
     const batchIds = body.shipment.items.map((item) => item.inventory_batch_id);
 
     const { data: batches, error: batchError } = await supabaseAdmin
@@ -292,7 +360,6 @@ export const recordReplacementShipment = async (
       }
     }
 
-    // Build a lookup map for supplier validation
     const batchById = new Map(
       (batches ?? []).map((b) => [b.id, b])
     );
@@ -356,9 +423,8 @@ export const recordReplacementShipment = async (
     }
 
     // ── 6. Compute quantity-proportional shipping cost allocation ─────────────
-    //    Uses the same last-item correction strategy used in the supplier
-    //    shipment controller to ensure allocated costs sum exactly to the
-    //    total shipping_cost without floating-point rounding drift.
+    // Uses the last-item correction strategy so allocated costs sum exactly to
+    // the total shipping_cost without floating-point rounding drift.
     const totalQuantity = shipmentItems.reduce(
       (sum, item) => sum + item.quantity,
       0
@@ -409,8 +475,6 @@ export const recordReplacementShipment = async (
     }
 
     // ── 8. INSERT supplier_replacements ──────────────────────────────────────
-    //    Status defaults to 'in_transit' when recording a shipment unless the
-    //    caller explicitly supplies a different initial status.
     const replacementStatus = body.status ?? "in_transit";
 
     const { data: replacement, error: replacementError } = await supabaseAdmin
@@ -435,20 +499,18 @@ export const recordReplacementShipment = async (
       message: "Supplier replacement shipment recorded successfully.",
       data: {
         replacement,
-        return_shipment:       returnShipment,
-        shipment_items:        shipmentItems,
-        cost_allocations:      costAllocations,
-        total_quantity:        totalQuantity,
-        total_shipping_cost:   shippingCost,
+        return_shipment:     returnShipment,
+        shipment_items:      shipmentItems,
+        cost_allocations:    costAllocations,
+        total_quantity:      totalQuantity,
+        total_shipping_cost: shippingCost,
       },
     });
   } catch (err) {
     // ── Compensating rollback ─────────────────────────────────────────────
-    // If we created a return shipment but later steps failed, clean up all
-    // dependent rows in reverse FK dependency order before propagating the error.
+    // If a return shipment row was created but a later step failed, clean up
+    // all dependent rows in reverse FK dependency order before re-throwing.
     if (returnShipmentId) {
-      // supplier_replacements → supplier_return_shipment_items →
-      // return_shipment_cost_allocations → supplier_return_shipments
       await supabaseAdmin
         .from("supplier_replacements")
         .delete()
@@ -556,17 +618,35 @@ export const createSupplierReplacement = async (
 // Paginated list of supplier_replacements enriched with context from
 // supplier_returns and supplier_return_shipments.
 //
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX: Seller scoping — how it worked before vs. how it works now
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// BEFORE (broken — PostgREST rejects dot-notation join filters):
+//   query = query.eq("supplier_returns.seller_id", sellerId);
+//
+//   PostgREST interprets "supplier_returns.seller_id" as a column name
+//   literal on the supplier_replacements table, not as a path into the
+//   embedded join. This causes a schema-cache error or returns wrong results.
+//
+// AFTER (correct — two-step ID pre-fetch):
+//   Step 1: SELECT id FROM supplier_returns WHERE seller_id = sellerId
+//           → gives us all return IDs visible to this seller
+//   Step 2: query = query.in("return_id", visibleReturnIds)
+//           → supplier_replacements.return_id is a direct column on the
+//             primary table, so .in() works correctly without any join.
+//
+//   This is the same strategy used elsewhere in the codebase for seller
+//   scoping (e.g. resolving seller product IDs before filtering variants).
+//
+// ─────────────────────────────────────────────────────────────────────────────
+//
 // Query params:
 //   ?return_id=<uuid>  — filter to a specific supplier_return
 //   ?status=<value>    — filter by supplier_replacements.status
 //   ?page=<n>          — page number (default 1)
 //   ?limit=<n>         — items per page (default 20, max 100)
-//
-// Access:
-//   Sellers see only replacements whose underlying supplier_returns.seller_id
-//   matches their linked seller profile. This is enforced by joining through
-//   supplier_returns and filtering on seller_id.
-//   Admins see all replacements with an optional ?seller_id= filter.
+//   ?seller_id=<uuid>  — admin only: filter by seller
 // ─────────────────────────────────────────────────────────────────────────────
 export const listSupplierReplacements = async (
   req:  Request,
@@ -586,40 +666,73 @@ export const listSupplierReplacements = async (
     if (returnIdParam) validateUuid(returnIdParam, "return_id");
     if (sellerIdParam) validateUuid(sellerIdParam, "seller_id");
 
-    if (statusParam &&
-        !["pending", "in_transit", "completed"].includes(statusParam)) {
+    if (
+      statusParam &&
+      !["pending", "in_transit", "completed"].includes(statusParam)
+    ) {
       throw new AppError(
         "status must be 'pending', 'in_transit', or 'completed'",
         400
       );
     }
 
-    // ── Build query ───────────────────────────────────────────────────────────
+    // ── Resolve seller_id to use for scoping ──────────────────────────────────
+    // For non-admin callers this is always their own seller_id.
+    // For admin callers it is the ?seller_id= query param (or null = all).
+    let sellerIdFilter: string | null = null;
+
+    if (!isAdmin(req)) {
+      // Non-admin: always scope to own seller
+      sellerIdFilter = mustGetSellerId(req);
+    } else if (sellerIdParam) {
+      // Admin with explicit ?seller_id= filter
+      sellerIdFilter = sellerIdParam;
+    }
+    // Admin with no ?seller_id= → sellerIdFilter remains null → no scoping
+
+    // ── Step 1: Resolve visible return IDs (FIX) ──────────────────────────────
+    // This replaces the broken dot-notation join filter.
+    // resolveVisibleReturnIds returns:
+    //   null      → admin, no scoping needed
+    //   string[]  → IDs of supplier_returns visible to this seller
+    //               (may be empty if seller has no returns)
+    const visibleReturnIds = await resolveVisibleReturnIds(sellerIdFilter);
+
+    // Short-circuit: seller has no returns → no replacements can exist
+    if (visibleReturnIds !== null && visibleReturnIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          data:    [],
+          total:   0,
+          page,
+          limit,
+          hasMore: false,
+        },
+      }) as any;
+    }
+
+    // ── Step 2: Build the main query with direct-column filters only ──────────
     let query = supabaseAdmin
       .from("supplier_replacements")
       .select(REPLACEMENT_SELECT, { count: "exact" })
       .order("created_at", { ascending: false })
       .range(from, to);
 
-    // Apply filters
+    // Apply return_id filter (always a direct column — safe)
     if (returnIdParam) {
       query = query.eq("return_id", returnIdParam);
     }
 
+    // Apply status filter (direct column — safe)
     if (statusParam) {
       query = query.eq("status", statusParam);
     }
 
-    // ── Seller scoping ────────────────────────────────────────────────────────
-    // Sellers can only see replacements tied to their own returns.
-    // We achieve this by filtering on the nested supplier_returns.seller_id.
-    // Admins can optionally filter by ?seller_id= to inspect a specific seller.
-    if (!isAdmin(req)) {
-      const sellerId = mustGetSellerId(req);
-      // Filter via the join: supplier_returns.seller_id = sellerId
-      query = query.eq("supplier_returns.seller_id", sellerId);
-    } else if (sellerIdParam) {
-      query = query.eq("supplier_returns.seller_id", sellerIdParam);
+    // Apply seller scoping via return_id IN list (FIX — replaces dot-notation)
+    // visibleReturnIds is only non-null when we have a seller scope to apply.
+    if (visibleReturnIds !== null) {
+      query = query.in("return_id", visibleReturnIds);
     }
 
     const { data, error, count } = await query;
