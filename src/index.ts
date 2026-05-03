@@ -81,6 +81,7 @@ import traceRoutes                    from "./routes/traceRoutes";       // ← 
 import analyticsRoutes                from "./routes/analyticsRoutes";   // ← NEW
 import inventoryRoutes                from "./routes/inventoryRoutes";
 import costsRoutes                    from "./routes/costsRoutes";
+import expenseRoutes                  from "./routes/expenseRoutes"; 
 import cartRoutes                     from "./routes/cartRoutes";
 import shipmentRoutes                 from "./routes/shipmentRoutes";
 import orderRoutes                    from "./routes/orderRoutes";
@@ -185,6 +186,7 @@ app.use("/api", traceRoutes);                      // per-route guards — selle
 app.use("/api", analyticsRoutes);                  // per-route guards — seller/admin analytics (NEW)
 app.use("/api", inventoryRoutes);                  // per-route guards — seller/admin inventory visibility
 app.use("/api", costsRoutes);                      // per-route guards — seller/admin cost allocations
+app.use("/api", expenseRoutes);                    // per-route guards — seller/admin expense management 
 app.use("/api", adminRoutes);                      // blanket requireAuth + requireRole("admin") — analytics
 app.use("/api", productRoutes);                    // blanket requireAuth inside — must come after public routes
 app.use("/api", categoryRoutes);                   // blanket requireAuth inside
